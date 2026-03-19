@@ -37,6 +37,24 @@ C_STEP_OFF= "#9ca3af"
 FNT       = "Segoe UI"
 
 STEPS = ["Bienvenida", "Requisitos", "Cliente", "Cámaras", "Instalación", "Listo"]
+LOGO_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Logo gris.png")
+
+def _cargar_logo(master, max_w=220, max_h=88):
+    """Carga mir_logo.png; retorna PhotoImage o None."""
+    if not os.path.exists(LOGO_FILE):
+        return None
+    try:
+        try:
+            from PIL import Image, ImageTk
+            img = Image.open(LOGO_FILE).convert("RGBA")
+            img.thumbnail((max_w, max_h))
+            return ImageTk.PhotoImage(img, master=master)
+        except ImportError:
+            raw = tk.PhotoImage(file=LOGO_FILE, master=master)
+            factor = max(1, raw.width() // max_w)
+            return raw.subsample(factor, factor) if factor > 1 else raw
+    except Exception:
+        return None
 
 # ── Helpers de lógica ─────────────────────────────────────────────────────────
 def slugify(nombre):
@@ -52,9 +70,10 @@ def pkg_instalado(nombre):
 
 def instalar_pkg(nombre, log_cb):
     log_cb(f"  Instalando {nombre}...")
+    pkgs = nombre.split()  # soporta "pkg-a pkg-b" como múltiples paquetes
     r = subprocess.run(
-        [sys.executable, "-m", "pip", "install", nombre, "--quiet"],
-        capture_output=True, text=True, timeout=120
+        [sys.executable, "-m", "pip", "install"] + pkgs + ["--quiet"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120
     )
     return r.returncode == 0
 
@@ -137,6 +156,7 @@ class Instalador:
 
         self.current = 0
         self.camaras = []
+        self._logo_img = _cargar_logo(self.root, max_w=240, max_h=96)
 
         # Variables de formulario
         self.v_nombre    = tk.StringVar()
@@ -289,8 +309,11 @@ class Instalador:
     def _pg_bienvenida(self):
         f = tk.Frame(self.content, bg=C_BG)
         f.pack(expand=True)
-        tk.Label(f, text="MIR Soluciones", font=(FNT, 26, "bold"),
-                 fg=C_HEADER, bg=C_BG).pack(pady=(30,4))
+        if self._logo_img:
+            tk.Label(f, image=self._logo_img, bg=C_BG).pack(pady=(28, 8))
+        else:
+            tk.Label(f, text="M.I.R. Soluciones Integrales", font=(FNT, 22, "bold"),
+                     fg=C_HEADER, bg=C_BG).pack(pady=(30, 8))
         tk.Label(f, text="Asistente de instalación del agente de monitoreo",
                  font=(FNT, 11), fg=C_GRAY, bg=C_BG).pack()
         tk.Frame(f, bg=C_GOLD, height=2, width=200).pack(pady=16)
