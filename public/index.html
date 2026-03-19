@@ -502,43 +502,53 @@
 
   <!-- VISTA: RED / WIFI -->
   <div id="vista-red" class="vista" style="display:none;flex-direction:column;gap:18px">
+
+    <!-- Panel 1: Conexión local -->
     <div class="panel">
       <div class="panel-head">
         <div class="panel-title">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 6c1.9-2.7 4.3-4 7-4s5.1 1.3 7 4"/><path d="M4 9.5C5.3 8 6.6 7 8 7s2.7 1 4 2.5"/><circle cx="8" cy="13" r="1" fill="currentColor"/></svg>
-          Información de red
+          Conexión local
+        </div>
+        <div class="pill" id="red-tipo-pill" style="background:rgba(176,184,204,0.12);color:var(--text3)">—</div>
+      </div>
+      <div class="panel-body">
+        <div class="stat-row"><span class="stat-key">Tipo</span><span class="stat-val" id="red-tipo">—</span></div>
+        <div class="stat-row"><span class="stat-key">IP local</span><span class="stat-val" id="red-ip-local">—</span></div>
+        <div class="stat-row" id="red-router-row" style="display:none"><span class="stat-key">Router</span><span class="stat-val" id="red-router">—</span></div>
+        <!-- Filas WiFi (ocultas si es Ethernet) -->
+        <div id="red-wifi-rows" style="display:none">
+          <div style="height:1px;background:var(--border);margin:10px 0"></div>
+          <div class="stat-row"><span class="stat-key">Red (SSID)</span><span class="stat-val" id="red-ssid">—</span></div>
+          <div class="stat-row"><span class="stat-key">Señal</span><span class="stat-val" id="red-senal">—</span></div>
+          <div class="stat-row"><span class="stat-key">Banda</span><span class="stat-val" id="red-banda">—</span></div>
+          <div class="stat-row"><span class="stat-key">Canal</span><span class="stat-val" id="red-canal">—</span></div>
+          <div class="stat-row"><span class="stat-key">Velocidad WiFi</span><span class="stat-val" id="red-vel-wifi">—</span></div>
+          <div class="stat-row"><span class="stat-key">Protocolo</span><span class="stat-val" id="red-protocolo">—</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 2: Internet -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 2c-2 2-3 3.5-3 6s1 4 3 6"/><path d="M8 2c2 2 3 3.5 3 6s-1 4-3 6"/><path d="M2 8h12"/></svg>
+          Estado de internet
         </div>
         <div class="pill pill-green" id="red-pill2"><span class="dot dot-green dot-pulse"></span> Estable</div>
       </div>
       <div class="panel-body">
         <div class="stat-row"><span class="stat-key">Proveedor</span><span class="stat-val" id="d-isp2">—</span></div>
-        <div class="stat-row"><span class="stat-key">Gateway IP</span><span class="stat-val" id="d-gateway2">—</span></div>
+        <div class="stat-row"><span class="stat-key">Gateway</span><span class="stat-val" id="d-gateway2">—</span></div>
         <div class="stat-row"><span class="stat-key">Latencia Google</span><span class="stat-val" id="d-lat-google2">—</span></div>
         <div class="stat-row"><span class="stat-key">Latencia Cloudflare</span><span class="stat-val" id="d-lat-cf2">—</span></div>
+        <div class="stat-row"><span class="stat-key">Bajada</span><span class="stat-val" id="red-bajada2">—</span></div>
+        <div class="stat-row"><span class="stat-key">Subida</span><span class="stat-val" id="red-subida2">—</span></div>
         <div class="stat-row"><span class="stat-key">Última sync</span><span class="stat-val" id="d-sync2">—</span></div>
       </div>
     </div>
-    <div class="panel" id="panel-red">
-      <div class="panel-head">
-        <div class="panel-title">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 6c1.9-2.7 4.3-4 7-4s5.1 1.3 7 4"/><path d="M4 9.5C5.3 8 6.6 7 8 7s2.7 1 4 2.5"/><circle cx="8" cy="13" r="1" fill="currentColor"/></svg>
-          Dispositivos en la red
-        </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <span style="font-size:11px;color:var(--text3)" id="red-total-devices"></span>
-          <span class="pill pill-green" id="red-estado-pill"><span class="dot dot-green dot-pulse"></span> Escaneando</span>
-        </div>
-      </div>
-      <div class="panel-body" style="padding:0">
-        <div class="devices-header" style="display:grid;grid-template-columns:1fr 2fr 2fr;padding:8px 16px;border-bottom:1px solid var(--border);background:rgba(176,184,204,0.04)">
-          <span style="font-size:10px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em">IP</span>
-          <span style="font-size:10px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em" class="hide-mobile">MAC</span>
-          <span style="font-size:10px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em" class="hide-mobile">Dispositivo</span>
-        </div>
-        <style>@media(max-width:768px){.devices-header{grid-template-columns:1fr!important;}.hide-mobile{display:none;}}</style>
-        <div id="devices-list"><div class="no-data" style="padding:14px 16px">Sin datos de red</div></div>
-      </div>
-    </div>
+
   </div><!-- /vista-red -->
 
   <!-- VISTA: MIS DISPOSITIVOS -->
@@ -914,6 +924,50 @@ function actualizarDashboard(data) {
       ? '<span class="dot dot-green dot-pulse"></span> Estable'
       : '<span class="dot dot-red dot-pulse"></span> Offline';
   }
+  const bj2 = document.getElementById('red-bajada2');
+  const sb2 = document.getElementById('red-subida2');
+  if (bj2) bj2.textContent = red.bajada_mbps != null ? red.bajada_mbps + ' Mbps' : '—';
+  if (sb2) sb2.textContent = red.subida_mbps  != null ? red.subida_mbps  + ' Mbps' : '—';
+
+  // ── CONEXIÓN LOCAL (WiFi / Ethernet) ──
+  const cl = red.conexion_local;
+  if (cl) {
+    const tipoPill = document.getElementById('red-tipo-pill');
+    const tipoEl   = document.getElementById('red-tipo');
+    const ipEl     = document.getElementById('red-ip-local');
+    const wifiRows = document.getElementById('red-wifi-rows');
+    const routerRow = document.getElementById('red-router-row');
+    const routerEl = document.getElementById('red-router');
+
+    if (tipoEl) tipoEl.textContent = cl.tipo || '—';
+    if (ipEl)   ipEl.textContent   = cl.ip_local || '—';
+
+    if (tipoPill) {
+      const esWifi = cl.tipo === 'WiFi';
+      tipoPill.className = esWifi ? 'pill pill-green' : 'pill';
+      tipoPill.style.cssText = esWifi ? '' : 'background:rgba(176,184,204,0.12);color:var(--text3)';
+      tipoPill.textContent = cl.tipo || '—';
+    }
+
+    if (cl.router_fabricante && routerRow && routerEl) {
+      routerRow.style.display = '';
+      routerEl.textContent = cl.router_fabricante + (cl.router_mac ? ' · ' + cl.router_mac : '');
+    }
+
+    if (cl.tipo === 'WiFi' && cl.wifi && wifiRows) {
+      wifiRows.style.display = '';
+      const w = cl.wifi;
+      const set = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val || '—'; };
+      set('red-ssid',      w.ssid);
+      set('red-senal',     w.senal);
+      set('red-banda',     w.banda);
+      set('red-canal',     w.canal != null ? String(w.canal) : null);
+      set('red-vel-wifi',  w.velocidad_rx || w.velocidad_tx);
+      set('red-protocolo', w.protocolo);
+    } else if (wifiRows) {
+      wifiRows.style.display = 'none';
+    }
+  }
 
   // Mini camera summary in resumen
   if (data.camaras && data.camaras.length > 0) {
@@ -1000,33 +1054,15 @@ function renderAlertas() {
 
 function actualizarDispositivosRed(red) {
   const dispositivos = red.dispositivos_red;
-  const lista = document.getElementById('devices-list');
-  const total = document.getElementById('red-total-devices');
-
   if (!dispositivos || dispositivos.length === 0) return;
 
   _lastDispositivosData = dispositivos;
-  total.textContent = dispositivos.length + ' dispositivos detectados';
 
-  const sorted = [...dispositivos].sort((a, b) => {
-    const aNum = a.ip.split('.').map(n => parseInt(n).toString().padStart(3,'0')).join('');
-    const bNum = b.ip.split('.').map(n => parseInt(n).toString().padStart(3,'0')).join('');
-    return aNum.localeCompare(bNum);
-  });
+  // Actualizar resumen en vista-resumen (contador)
+  const total = document.getElementById('red-total-devices');
+  if (total) total.textContent = dispositivos.length + ' dispositivos detectados';
 
-  const rowsHtml = sorted.map(d => {
-    const nombre = d.hostname && d.hostname !== d.ip ? d.hostname : (d.fabricante && d.fabricante !== 'Desconocido' ? d.fabricante : '—');
-    const esNuevo = d.nuevo ? '<span class="device-new">NUEVO</span>' : '';
-    return `<div class="device-row-net">
-      <span class="device-ip">${d.ip}</span>
-      <span class="device-mac">${d.mac || '—'}</span>
-      <span class="device-name">${nombre}${esNuevo}</span>
-    </div>`;
-  }).join('');
-
-  if (lista) lista.innerHTML = rowsHtml;
-
-  // Also update dispositivos-lista if that vista is active
+  // Actualizar vista-dispositivos si está visible
   const vistaDisp = document.getElementById('vista-dispositivos');
   if (vistaDisp && vistaDisp.style.display !== 'none') {
     renderDispositivos(dispositivos);

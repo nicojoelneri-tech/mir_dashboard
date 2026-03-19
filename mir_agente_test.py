@@ -70,6 +70,89 @@ def obtener_fabricante(mac):
         return "Desconocido"
 
 # ─────────────────────────────────────────────
+#  INFO RED LOCAL (WiFi / Ethernet)
+# ─────────────────────────────────────────────
+
+def obtener_info_red(gateway_ip=None):
+    """Detecta tipo de conexión, info WiFi y fabricante del router."""
+    info = {}
+
+    # IP local del agente
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        info["ip_local"] = s.getsockname()[0]
+        s.close()
+    except Exception:
+        pass
+
+    if platform.system().lower() == "windows":
+        try:
+            r = subprocess.run(
+                ["netsh", "wlan", "show", "interfaces"],
+                capture_output=True, timeout=5, creationflags=_NO_WINDOW
+            )
+            txt = r.stdout.decode(sys.getdefaultencoding(), errors="replace")
+            wifi = {}
+            for linea in txt.splitlines():
+                l = linea.strip()
+                if not l or ":" not in l:
+                    continue
+                clave, _, valor = l.partition(":")
+                clave = clave.strip().lower()
+                valor = valor.strip()
+                if "ssid" in clave and "bssid" not in clave:
+                    wifi["ssid"] = valor
+                elif "bssid" in clave:
+                    wifi["bssid"] = valor
+                elif "señal" in clave or "signal" in clave:
+                    wifi["senal"] = valor          # "85%"
+                elif "tipo de radio" in clave or "radio type" in clave:
+                    wifi["protocolo"] = valor      # "802.11ac"
+                elif "canal" in clave or "channel" in clave:
+                    try:
+                        canal = int(valor)
+                        wifi["canal"] = canal
+                        wifi["banda"] = "5 GHz" if canal >= 36 else "2.4 GHz"
+                    except Exception:
+                        pass
+                elif "velocidad de recepción" in clave or "receive rate" in clave:
+                    wifi["velocidad_rx"] = valor   # "300 Mbps"
+                elif "velocidad de transmisión" in clave or "transmit rate" in clave:
+                    wifi["velocidad_tx"] = valor
+            if "ssid" in wifi:
+                info["tipo"] = "WiFi"
+                info["wifi"] = wifi
+            else:
+                info["tipo"] = "Ethernet"
+        except Exception:
+            info["tipo"] = "Desconocido"
+
+    # Fabricante del router a partir de la MAC del gateway en tabla ARP
+    if gateway_ip:
+        try:
+            r = subprocess.run(
+                ["arp", "-a", gateway_ip],
+                capture_output=True, timeout=3, creationflags=_NO_WINDOW
+            )
+            txt = r.stdout.decode(sys.getdefaultencoding(), errors="replace")
+            for linea in txt.splitlines():
+                if gateway_ip in linea:
+                    for parte in linea.split():
+                        if re.match(r'^([0-9a-fA-F]{2}[-:]){5}[0-9a-fA-F]{2}$', parte):
+                            mac_gw = parte.replace("-", ":").upper()
+                            fab = obtener_fabricante(mac_gw)
+                            if fab and fab != "Desconocido":
+                                info["router_fabricante"] = fab
+                                info["router_mac"] = mac_gw
+                            break
+                    break
+        except Exception:
+            pass
+
+    return info
+
+# ─────────────────────────────────────────────
 #  DETECCIÓN DE ISP
 # ─────────────────────────────────────────────
 
@@ -796,6 +879,7 @@ while True:
 
     # ── RED E INTERNET ──
     gw = detectar_gateway()
+    info_red_local = obtener_info_red(gw)
     gw_ok,   gw_lat   = ping(gw)
     inet_ok, inet_lat = ping("8.8.8.8")
     cf_ok,   cf_lat   = ping("1.1.1.1")
@@ -953,7 +1037,8 @@ while True:
             "isp":                 isp_info.get("isp") or None,
             "ip_publica":          isp_info.get("ip_publica") or None,
             "dispositivos_red":    dispositivos_actuales if dispositivos_actuales else None,
-            "total_dispositivos":  len(dispositivos_actuales) if dispositivos_actuales else None
+            "total_dispositivos":  len(dispositivos_actuales) if dispositivos_actuales else None,
+            "conexion_local":      info_red_local if info_red_local else None
         },
         "camaras": camaras_reporte if camaras_reporte else None,
         "alertas": alertas,
