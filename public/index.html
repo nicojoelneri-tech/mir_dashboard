@@ -278,6 +278,8 @@
       Tu contraseña fue reseteada por el administrador.<br>
       Debés establecer una nueva para continuar.
     </div>
+    <label class="login-label">Contraseña actual</label>
+    <input id="pass-actual" type="password" class="login-input" placeholder="Tu contraseña actual" autocomplete="current-password">
     <label class="login-label">Nueva contraseña</label>
     <input id="nueva-pass" type="password" class="login-input" placeholder="Mínimo 6 caracteres" autocomplete="new-password">
     <label class="login-label">Confirmar contraseña</label>
@@ -688,13 +690,18 @@ document.getElementById('conf-pass').addEventListener('keydown', e => {
 });
 
 async function confirmarNuevaPass() {
-  const nueva = document.getElementById('nueva-pass').value;
-  const conf  = document.getElementById('conf-pass').value;
-  const err   = document.getElementById('cambio-error');
-  const btn   = document.getElementById('cambio-btn');
+  const actual = document.getElementById('pass-actual').value;
+  const nueva  = document.getElementById('nueva-pass').value;
+  const conf   = document.getElementById('conf-pass').value;
+  const err    = document.getElementById('cambio-error');
+  const btn    = document.getElementById('cambio-btn');
 
   err.textContent = '';
 
+  if (!actual) {
+    err.textContent = 'Ingresá tu contraseña actual.';
+    return;
+  }
   if (nueva.length < 6) {
     err.textContent = 'La contraseña debe tener al menos 6 caracteres.';
     return;
@@ -709,19 +716,22 @@ async function confirmarNuevaPass() {
 
   try {
     const user = auth.currentUser;
+    const credential = firebase.auth.EmailAuthProvider.credential(user.email, actual);
+    await user.reauthenticateWithCredential(credential);
     await user.updatePassword(nueva);
     await db.ref(`usuarios/${user.uid}/debe_cambiar_clave`).remove();
     document.getElementById('cambio-pass-screen').style.display = 'none';
-    document.getElementById('nueva-pass').value = '';
-    document.getElementById('conf-pass').value  = '';
+    document.getElementById('pass-actual').value = '';
+    document.getElementById('nueva-pass').value  = '';
+    document.getElementById('conf-pass').value   = '';
     btn.disabled = false;
     btn.textContent = 'Establecer contraseña';
     iniciarMonitoreo(window._clienteId_cambio);
   } catch(e) {
     btn.disabled = false;
     btn.textContent = 'Establecer contraseña';
-    if (e.code === 'auth/requires-recent-login') {
-      err.textContent = 'Sesión expirada. Cerrá sesión, volvé a ingresar y cambiá la contraseña.';
+    if (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') {
+      err.textContent = 'Contraseña actual incorrecta.';
     } else if (e.code === 'auth/weak-password') {
       err.textContent = 'Contraseña muy débil. Usá al menos 6 caracteres.';
     } else {
@@ -780,7 +790,7 @@ function cargarHistorial(clienteId) {
 
 function renderHistorial(data) {
   const entries = Object.entries(data)
-    .map(([k, v]) => ({ ts: parseInt(k), ...v }))
+    .map(([k, v]) => ({ ...v, ts: parseInt(k) }))
     .sort((a, b) => a.ts - b.ts);
 
   // ── Sembrar historialUptime desde Firebase (solo en primera carga) ──

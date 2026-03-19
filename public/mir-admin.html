@@ -595,7 +595,7 @@ function renderClientes(data) {
 
     const internetOk = red.internet_online !== false;
     const minutos = ts ? Math.floor((Date.now() - ts.getTime()) / 60000) : 9999;
-    const agentOk = minutos < 15; // sin datos en 15 min = problema
+    const agentOk = minutos < 3; // sin datos en 3 min = problema
 
     let estado, cardClass, pillHtml;
     if (!agentOk) {
@@ -801,7 +801,7 @@ function renderAlertasGlobales(data) {
     });
 
     // Alertas resueltas: cliente online, internet ok, sin problemas
-    if (minutos < 15 && red.internet_online !== false) {
+    if (minutos < 3 && red.internet_online !== false) {
       const camProblemas = (rep.camaras || []).some(nvr =>
         !nvr.online || (nvr.canales || []).some(c => c.activa && !c.grabando) ||
         (nvr.discos || []).some(d => d.usado_pct >= 75)
