@@ -51,7 +51,7 @@ def _cargar_logo(master, max_w=220, max_h=88):
             return ImageTk.PhotoImage(img, master=master)
         except ImportError:
             raw = tk.PhotoImage(file=LOGO_FILE, master=master)
-            factor = max(1, raw.width() // max_w)
+            factor = max(1, raw.width() // max_w, raw.height() // max_h)
             return raw.subsample(factor, factor) if factor > 1 else raw
     except Exception:
         return None
@@ -156,7 +156,7 @@ class Instalador:
 
         self.current = 0
         self.camaras = []
-        self._logo_img = _cargar_logo(self.root, max_w=240, max_h=96)
+        self._logo_img = _cargar_logo(self.root, max_w=160, max_h=64)
 
         # Variables de formulario
         self.v_nombre    = tk.StringVar()
@@ -182,13 +182,9 @@ class Instalador:
         hdr = tk.Frame(self.root, bg=C_HEADER, height=72)
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
-        tk.Label(hdr, text="MIR", font=(FNT, 22, "bold"),
-                 fg=C_GOLD, bg=C_HEADER).place(x=24, y=16)
-        tk.Label(hdr, text="Soluciones", font=(FNT, 10),
-                 fg="#a0b4cc", bg=C_HEADER).place(x=74, y=28)
         self.lbl_step_title = tk.Label(hdr, text="", font=(FNT, 13, "bold"),
                                         fg=C_WHITE, bg=C_HEADER)
-        self.lbl_step_title.place(x=175, y=22)
+        self.lbl_step_title.place(relx=0.5, rely=0.5, anchor="center")
 
         # Barra de pasos
         self.steps_bar = tk.Canvas(self.root, bg=C_WHITE, height=46, highlightthickness=0)
@@ -310,10 +306,10 @@ class Instalador:
         f = tk.Frame(self.content, bg=C_BG)
         f.pack(expand=True)
         if self._logo_img:
-            tk.Label(f, image=self._logo_img, bg=C_BG).pack(pady=(28, 8))
+            tk.Label(f, image=self._logo_img, bg=C_BG).pack(pady=(16, 6))
         else:
             tk.Label(f, text="M.I.R. Soluciones Integrales", font=(FNT, 22, "bold"),
-                     fg=C_HEADER, bg=C_BG).pack(pady=(30, 8))
+                     fg=C_HEADER, bg=C_BG).pack(pady=(16, 6))
         tk.Label(f, text="Asistente de instalación del agente de monitoreo",
                  font=(FNT, 11), fg=C_GRAY, bg=C_BG).pack()
         tk.Frame(f, bg=C_GOLD, height=2, width=200).pack(pady=16)
