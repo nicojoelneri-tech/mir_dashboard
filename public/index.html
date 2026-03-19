@@ -420,7 +420,7 @@
           </div>
         </div>
         <div class="panel-body">
-          <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Conexión — Últimas 24 hs</div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Conexión — Últimas 2 hs</div>
           <div class="uptime-row" id="uptime-row"></div>
           <div class="uptime-legend"><span id="uptime-start">—</span><span>ahora</span></div>
           <div style="margin-top:16px" id="alerts-list"><div class="no-data">Sin alertas recientes</div></div>
@@ -752,8 +752,8 @@ function renderHistorial(data) {
     .map(([k, v]) => ({ ts: parseInt(k), ...v }))
     .sort((a, b) => a.ts - b.ts);
 
-  // ── Sembrar historialUptime desde Firebase (persiste entre recargas) ──
-  if (entries.length > 0) {
+  // ── Sembrar historialUptime desde Firebase (solo en primera carga) ──
+  if (entries.length > 0 && historialUptime.length === 0) {
     historialUptime = entries.map(e => ({ ts: e.ts * 1000, online: e.internet_online !== false }));
     renderUptime();
     renderAlertas();
@@ -944,7 +944,9 @@ function colorBarra(mbps) {
 
 function guardarHistorial(data) {
   historialUptime.push({ ts: Date.now(), online: data.red?.internet_online ?? true });
-  if (historialUptime.length > 48) historialUptime.shift();
+  // Mantener solo las últimas 24h (no límite de cantidad)
+  const cutoff = Date.now() - 86400000;
+  historialUptime = historialUptime.filter(h => h.ts >= cutoff);
   renderUptime();
   renderAlertas();
 }
@@ -952,23 +954,27 @@ function guardarHistorial(data) {
 function renderUptime() {
   const row = document.getElementById('uptime-row');
   row.innerHTML = '';
-  const relleno = 48 - historialUptime.length;
-  for (let i = 0; i < relleno; i++) {
+  const SLOTS    = 48;
+  const VENTANA  = 2 * 60 * 60 * 1000; // 2 horas en ms
+  const SLOT_MS  = VENTANA / SLOTS;     // 2.5 min por slot
+  const ahora    = Date.now();
+  const desde    = ahora - VENTANA;
+
+  for (let i = 0; i < SLOTS; i++) {
+    const slotStart = desde + i * SLOT_MS;
+    const slotEnd   = slotStart + SLOT_MS;
+    const enSlot    = historialUptime.filter(h => h.ts >= slotStart && h.ts < slotEnd);
     const b = document.createElement('div');
-    b.className = 'uptime-block ub-empty';
+    if (enSlot.length === 0) {
+      b.className = 'uptime-block ub-empty';
+    } else {
+      b.className = 'uptime-block ' + (enSlot.some(h => !h.online) ? 'ub-err' : 'ub-ok');
+      b.title = new Date(slotStart).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    }
     row.appendChild(b);
   }
-  historialUptime.forEach(h => {
-    const b = document.createElement('div');
-    b.className = 'uptime-block ' + (h.online ? 'ub-ok' : 'ub-err');
-    b.title = new Date(h.ts).toLocaleTimeString();
-    row.appendChild(b);
-  });
-  if (historialUptime.length > 0) {
-    const inicio = new Date(historialUptime[0].ts);
-    document.getElementById('uptime-start').textContent =
-      inicio.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-  }
+  document.getElementById('uptime-start').textContent =
+    new Date(desde).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
 }
 
 function renderAlertas() {
