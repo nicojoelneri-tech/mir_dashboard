@@ -406,7 +406,7 @@
           </div>
           <div style="margin-top:14px">
             <div class="stat-row"><span class="stat-key">Proveedor</span><span class="stat-val" id="d-isp">—</span></div>
-            <div class="stat-row"><span class="stat-key">Gateway</span><span class="stat-val" id="d-gateway">—</span></div>
+            <div class="stat-row"><span class="stat-key">Gateway</span><span class="stat-val"><span id="d-gateway" style="filter:blur(4px);user-select:none;transition:filter 0.2s">—</span><svg onclick="toggleGateway()" id="gw-eye" style="cursor:pointer;margin-left:6px;opacity:0.5;vertical-align:middle;flex-shrink:0" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/></svg></span></div>
             <div class="stat-row"><span class="stat-key">Latencia Google</span><span class="stat-val" id="d-lat-google">—</span></div>
             <div class="stat-row"><span class="stat-key">Latencia Cloudflare</span><span class="stat-val" id="d-lat-cf">—</span></div>
             <div class="stat-row"><span class="stat-key">Última sync</span><span class="stat-val" id="d-sync">—</span></div>
@@ -542,7 +542,7 @@
       </div>
       <div class="panel-body">
         <div class="stat-row"><span class="stat-key">Proveedor</span><span class="stat-val" id="d-isp2">—</span></div>
-        <div class="stat-row"><span class="stat-key">Gateway</span><span class="stat-val" id="d-gateway2">—</span></div>
+        <div class="stat-row"><span class="stat-key">Gateway</span><span class="stat-val"><span id="d-gateway2" style="filter:blur(4px);user-select:none;transition:filter 0.2s">—</span><svg onclick="toggleGateway()" style="cursor:pointer;margin-left:6px;opacity:0.5;vertical-align:middle;flex-shrink:0" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/></svg></span></div>
         <div class="stat-row"><span class="stat-key">Latencia Google</span><span class="stat-val" id="d-lat-google2">—</span></div>
         <div class="stat-row"><span class="stat-key">Latencia Cloudflare</span><span class="stat-val" id="d-lat-cf2">—</span></div>
         <div class="stat-row"><span class="stat-key">Bajada</span><span class="stat-val" id="red-bajada2">—</span></div>
@@ -719,7 +719,7 @@ async function confirmarNuevaPass() {
     const credential = firebase.auth.EmailAuthProvider.credential(user.email, actual);
     await user.reauthenticateWithCredential(credential);
     await user.updatePassword(nueva);
-    await db.ref(`usuarios/${user.uid}/debe_cambiar_clave`).remove();
+    await db.ref(`usuarios/${user.uid}`).update({ debe_cambiar_clave: null, pass: nueva });
     document.getElementById('cambio-pass-screen').style.display = 'none';
     document.getElementById('pass-actual').value = '';
     document.getElementById('nueva-pass').value  = '';
@@ -870,7 +870,7 @@ function renderHistorial(data) {
 
 function actualizarDashboard(data) {
   const red = data.red || {};
-  const tsRaw = data.ts ? new Date(data.ts.includes('Z') ? data.ts : data.ts + 'Z') : null;
+  const tsRaw = data.ts ? new Date(data.ts.includes('Z') || /[+-]\d{2}:\d{2}$/.test(data.ts) ? data.ts : data.ts + 'Z') : null;
   const ts = tsRaw && !isNaN(tsRaw) ? tsRaw : null;
   const hace = ts ? tiempoRelativo(ts) : '—';
 
@@ -1153,6 +1153,17 @@ function parsearFecha(tsStr) {
   }
   const d = new Date(s);
   return isNaN(d.getTime()) ? null : d;
+}
+
+let _gwVisible = false;
+function toggleGateway() {
+  _gwVisible = !_gwVisible;
+  const blur = _gwVisible ? 'none' : 'blur(4px)';
+  const sel  = _gwVisible ? 'text' : 'none';
+  ['d-gateway','d-gateway2'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.style.filter = blur; el.style.userSelect = sel; }
+  });
 }
 
 function tiempoRelativo(fecha) {

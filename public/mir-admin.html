@@ -141,6 +141,15 @@
   .btn-reset:disabled { opacity: 0.4; cursor: default; }
   .usuarios-toast { font-size: 12px; margin-top: 14px; padding: 10px 16px; border-radius: 8px; background: var(--bg2); border: 1px solid var(--border); transition: opacity 0.4s; opacity: 0; min-height: 36px; }
   .usuarios-empty { text-align: center; padding: 48px 0; color: var(--text3); font-size: 13px; }
+  .reset-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 200; display: flex; align-items: center; justify-content: center; }
+  .reset-modal { background: var(--bg2); border: 1px solid var(--border2); border-radius: 14px; padding: 28px 32px; width: 340px; }
+  .reset-modal h3 { font-size: 14px; font-weight: 600; margin: 0 0 6px; }
+  .reset-modal p { font-size: 12px; color: var(--text3); margin: 0 0 16px; line-height: 1.5; }
+  .reset-modal input { width: 100%; background: var(--bg3); border: 1px solid var(--border2); border-radius: 8px; padding: 9px 12px; font-size: 13px; color: var(--text); outline: none; font-family: 'DM Sans', sans-serif; box-sizing: border-box; margin-bottom: 14px; }
+  .reset-modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
+  .reset-modal-btns button { font-size: 12px; padding: 7px 16px; border-radius: 8px; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+  .btn-modal-cancel { background: var(--bg3); color: var(--text2); }
+  .btn-modal-confirm { background: var(--yellow); color: #000; font-weight: 600; }
   .alerta-row.vista { opacity: 0.28; }
   .alertas-vistas-sep { font-size: 10px; font-weight: 500; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; padding: 12px 2px 6px; }
 
@@ -1008,18 +1017,78 @@ function cargarUsuarios() {
   });
 }
 
-async function resetPassword(email, uid) {
+function resetPassword(email, uid) {
   if (!email || email === '—') return;
-  const btn = document.getElementById('btn-reset-' + uid);
-  if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+
+  // Mostrar modal para ingresar clave temporal
+  const overlay = document.createElement('div');
+  overlay.className = 'reset-modal-overlay';
+  overlay.innerHTML = `
+    <div class="reset-modal">
+      <h3>Blanquear contraseña</h3>
+      <p>Ingresá una clave temporal para <strong>${escapeHtml(email)}</strong>.<br>
+         El cliente deberá cambiarla al próximo login.</p>
+      <input id="modal-nueva-pass" type="text" placeholder="Clave temporal (mín. 6 caracteres)" autocomplete="off">
+      <div id="modal-err" style="font-size:11px;color:var(--red);min-height:16px;margin-bottom:10px"></div>
+      <div class="reset-modal-btns">
+        <button class="btn-modal-cancel" onclick="this.closest('.reset-modal-overlay').remove()">Cancelar</button>
+        <button class="btn-modal-confirm" id="modal-confirm-btn" onclick="_confirmarReset('${escapeHtml(email)}','${escapeHtml(uid)}')">Confirmar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  document.getElementById('modal-nueva-pass').focus();
+}
+
+async function _confirmarReset(email, uid) {
+  const input   = document.getElementById('modal-nueva-pass');
+  const errEl   = document.getElementById('modal-err');
+  const confirmBtn = document.getElementById('modal-confirm-btn');
+  const nuevaPass  = input ? input.value.trim() : '';
+
+  if (nuevaPass.length < 6) {
+    if (errEl) errEl.textContent = 'La clave debe tener al menos 6 caracteres.';
+    return;
+  }
+
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = 'Procesando...';
+  if (errEl) errEl.textContent = '';
 
   try {
-    await db.ref(`usuarios/${uid}/debe_cambiar_clave`).set(true);
-    _toastUsuarios(`Contraseña de ${email} marcada para reset. Al próximo login el cliente deberá establecer una nueva.`, false);
-    if (btn) { btn.textContent = 'Marcada ✓'; }
+    // 1. Leer contraseña actual guardada en DB
+    const snap = await db.ref(`usuarios/${uid}/pass`).once('value');
+    const passActual = snap.val();
+    if (!passActual) throw new Error('No se encontró la contraseña guardada. Usá Firebase Console para este usuario.');
+
+    // 2. Autenticar como el cliente para obtener su idToken
+    const loginResp = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${firebaseConfig.apiKey}`,
+      { method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ email, password: passActual, returnSecureToken: true }) }
+    );
+    const loginData = await loginResp.json();
+    if (loginData.error) throw new Error('No se pudo autenticar al cliente: ' + loginData.error.message);
+    const idToken = loginData.idToken;
+
+    // 3. Cambiar contraseña en Firebase Auth
+    const updateResp = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:update?key=${firebaseConfig.apiKey}`,
+      { method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ idToken, password: nuevaPass, returnSecureToken: false }) }
+    );
+    const updateData = await updateResp.json();
+    if (updateData.error) throw new Error('Error al cambiar contraseña: ' + updateData.error.message);
+
+    // 4. Actualizar pass y marcar debe_cambiar_clave en DB
+    await db.ref(`usuarios/${uid}`).update({ pass: nuevaPass, debe_cambiar_clave: true });
+
+    document.querySelector('.reset-modal-overlay')?.remove();
+    _toastUsuarios(`✓ Contraseña de ${email} reseteada. Clave temporal: ${nuevaPass}`, false);
+
   } catch(e) {
-    _toastUsuarios(`Error: ${e.message}`, true);
-    if (btn) { btn.disabled = false; btn.textContent = 'Resetear contraseña'; }
+    if (errEl) errEl.textContent = e.message;
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = 'Confirmar';
   }
 }
 
@@ -1125,6 +1194,7 @@ async function ncCrearCliente() {
           cliente_id:          id,
           nombre:              nombre,
           email:               email,
+          pass:                pass,
           debe_cambiar_clave:  false,
           creado_ts:           new Date().toISOString()
         });
