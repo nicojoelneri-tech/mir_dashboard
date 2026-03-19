@@ -290,11 +290,11 @@ def enviar_firebase(datos, nodo="ultimo_reporte"):
         if not token:
             guardar_local(datos)
             return False
-        url  = f"{FIREBASE_URL}/clientes/{CLIENTE_ID}/{nodo}.json"
+        url  = f"{FIREBASE_URL}/clientes/{CLIENTE_ID}/{nodo}.json?auth={token}"
         body = json.dumps(datos, default=str).encode("utf-8")
         req  = urllib.request.Request(
             url, data=body, method="PUT",
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"}
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             return resp.status == 200
@@ -311,10 +311,10 @@ def guardar_uptime_barra(online):
         if not token:
             return
         ts_key = str(int(time.time()))
-        url = f"{FIREBASE_URL}/clientes/{CLIENTE_ID}/uptime_barra/{ts_key}.json"
+        url = f"{FIREBASE_URL}/clientes/{CLIENTE_ID}/uptime_barra/{ts_key}.json?auth={token}"
         body = json.dumps({"online": online}).encode("utf-8")
         req  = urllib.request.Request(url, data=body, method="PUT",
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+            headers={"Content-Type": "application/json"})
         urllib.request.urlopen(req, timeout=6)
     except Exception:
         pass
@@ -345,26 +345,25 @@ def guardar_historial(reporte):
                 for c in reporte["camaras"]
             ]
         # Guardar entrada
-        url_put = f"{FIREBASE_URL}/clientes/{CLIENTE_ID}/historial/{ts_key}.json"
+        url_put = f"{FIREBASE_URL}/clientes/{CLIENTE_ID}/historial/{ts_key}.json?auth={token}"
         body = json.dumps(entrada, default=str).encode("utf-8")
         req = urllib.request.Request(url_put, data=body, method="PUT",
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+            headers={"Content-Type": "application/json"})
         urllib.request.urlopen(req, timeout=10)
 
         # Podar entradas con más de 30 días
         limite = int(time.time()) - (30 * 86400)
         url_q = (f"{FIREBASE_URL}/clientes/{CLIENTE_ID}/historial.json"
-                 f'?orderBy=%22%24key%22&endAt=%22{limite}%22')
-        req_q = urllib.request.Request(url_q,
-            headers={"Authorization": f"Bearer {token}"})
+                 f'?auth={token}&orderBy=%22%24key%22&endAt=%22{limite}%22')
+        req_q = urllib.request.Request(url_q)
         with urllib.request.urlopen(req_q, timeout=10) as resp:
             viejas = json.loads(resp.read()) or {}
         if viejas:
             patch = {k: None for k in viejas}
-            url_p = f"{FIREBASE_URL}/clientes/{CLIENTE_ID}/historial.json"
+            url_p = f"{FIREBASE_URL}/clientes/{CLIENTE_ID}/historial.json?auth={token}"
             req_p = urllib.request.Request(url_p,
                 data=json.dumps(patch).encode("utf-8"), method="PATCH",
-                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+                headers={"Content-Type": "application/json"})
             urllib.request.urlopen(req_p, timeout=10)
             print(f"  [OK] Historial: entrada guardada, {len(viejas)} entrada(s) podada(s).")
         else:
@@ -442,8 +441,8 @@ def limpiar_alertas_firebase():
         token = obtener_token()
         if not token:
             return
-        url = f"{FIREBASE_URL}/admin_config/alertas_ignoradas.json"
-        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+        url = f"{FIREBASE_URL}/admin_config/alertas_ignoradas.json?auth={token}"
+        req = urllib.request.Request(url)
         with urllib.request.urlopen(req, timeout=10) as resp:
             alertas = json.loads(resp.read()) or {}
         if not alertas:
@@ -462,7 +461,7 @@ def limpiar_alertas_firebase():
         if viejas:
             patch = json.dumps(viejas).encode("utf-8")
             req_p = urllib.request.Request(url, data=patch, method="PATCH",
-                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+                headers={"Content-Type": "application/json"})
             urllib.request.urlopen(req_p, timeout=10)
             print(f"  [OK] Firebase: {len(viejas)} alerta(s) ignorada(s) vieja(s) podada(s).")
     except Exception:
@@ -477,16 +476,16 @@ def limpiar_uptime_barra():
             return
         limite = str(int(time.time()) - 86400)
         url = (f"{FIREBASE_URL}/clientes/{CLIENTE_ID}/uptime_barra.json"
-               f'?orderBy=%22%24key%22&endAt=%22{limite}%22')
-        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+               f'?auth={token}&orderBy=%22%24key%22&endAt=%22{limite}%22')
+        req = urllib.request.Request(url)
         with urllib.request.urlopen(req, timeout=10) as resp:
             viejas = json.loads(resp.read()) or {}
         if viejas:
             patch = json.dumps({k: None for k in viejas}).encode("utf-8")
             req_p = urllib.request.Request(
-                f"{FIREBASE_URL}/clientes/{CLIENTE_ID}/uptime_barra.json",
+                f"{FIREBASE_URL}/clientes/{CLIENTE_ID}/uptime_barra.json?auth={token}",
                 data=patch, method="PATCH",
-                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+                headers={"Content-Type": "application/json"})
             urllib.request.urlopen(req_p, timeout=10)
             print(f"  [OK] uptime_barra: {len(viejas)} entrada(s) vieja(s) podada(s).")
     except Exception:
