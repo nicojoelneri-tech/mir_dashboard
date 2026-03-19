@@ -476,8 +476,8 @@ class Instalador:
 
         tk.Label(f, text="Credenciales Firebase del cliente", font=(FNT, 10, "bold"),
                  fg=C_TEXT, bg=C_BG).pack(anchor="w")
-        tk.Label(f, text="Creá el usuario en Firebase Auth antes de instalar. "
-                         "Email sugerido: ID@mir-soluciones.app",
+        tk.Label(f, text="Creá el usuario desde el panel admin. "
+                         "Email sugerido: ID@clientes.mir.internal",
                  font=(FNT, 8), fg=C_GRAY, bg=C_BG, wraplength=540,
                  justify="left").pack(anchor="w", pady=(2,6))
 

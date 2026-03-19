@@ -2,14 +2,14 @@
   "rules": {
     "clientes": {
       "$cliente_id": {
-        ".read":  "auth != null && auth.token.email === ($cliente_id + '@mir-soluciones.app')",
-        ".write": "auth != null && auth.token.email === ($cliente_id + '@mir-soluciones.app')"
+        ".read":  "auth != null && auth.token.email === ($cliente_id + '@clientes.mir.internal')",
+        ".write": "auth != null && auth.token.email === ($cliente_id + '@clientes.mir.internal')"
       }
     },
     "historial": {
       "$cliente_id": {
-        ".read":  "auth != null && auth.token.email === ($cliente_id + '@mir-soluciones.app')",
-        ".write": "auth != null && auth.token.email === ($cliente_id + '@mir-soluciones.app')"
+        ".read":  "auth != null && auth.token.email === ($cliente_id + '@clientes.mir.internal')",
+        ".write": "auth != null && auth.token.email === ($cliente_id + '@clientes.mir.internal')"
       }
     }
   }

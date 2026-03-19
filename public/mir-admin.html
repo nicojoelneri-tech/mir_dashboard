@@ -169,6 +169,40 @@
     .content{padding:14px;}
     .topbar{padding:10px 14px;}
   }
+
+  /* ── Nuevo cliente ── */
+  .nc-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .nc-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;}
+  .nc-card-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border);}
+  .form-group{margin-bottom:12px;}
+  .form-label{font-size:10px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:5px;display:block;}
+  .form-input{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:8px 11px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;}
+  .form-input:focus{border-color:var(--mir-blue2);}
+  .form-input[readonly]{color:var(--text2);cursor:default;}
+  .form-mono{font-family:'DM Mono',monospace;font-size:12px;}
+  .pass-row{display:flex;gap:8px;}
+  .pass-row .form-input{flex:1;}
+  .btn-regen{background:var(--bg);border:1px solid var(--border);color:var(--text2);font-size:11px;padding:0 10px;border-radius:7px;cursor:pointer;white-space:nowrap;}
+  .btn-regen:hover{border-color:var(--border2);color:var(--text);}
+  .btn-crear{background:var(--mir-blue2);color:white;border:none;border-radius:8px;padding:10px 22px;font-size:13px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;margin-top:6px;width:100%;}
+  .btn-crear:hover{background:#2d6ab8;}
+  .btn-crear:disabled{opacity:0.5;cursor:not-allowed;}
+  .nc-status{margin-top:12px;font-size:12px;padding:10px 14px;border-radius:8px;display:none;}
+  .nc-status.ok{background:var(--green-bg);color:var(--green);border:1px solid rgba(34,197,94,0.2);display:block;}
+  .nc-status.err{background:var(--red-bg);color:var(--red);border:1px solid rgba(239,68,68,0.2);display:block;}
+  .result-box{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:14px;}
+  .result-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);}
+  .result-row:last-child{border-bottom:none;}
+  .result-lbl{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;}
+  .result-val{font-family:'DM Mono',monospace;font-size:12px;color:var(--text);}
+  .btn-copy-sm{background:none;border:1px solid var(--border);color:var(--text3);font-size:10px;padding:2px 7px;border-radius:4px;cursor:pointer;}
+  .btn-copy-sm:hover{color:var(--text);border-color:var(--border2);}
+  .btn-copiar-todo{width:100%;margin-top:12px;background:rgba(34,197,94,0.12);color:var(--green);border:1px solid rgba(34,197,94,0.25);border-radius:8px;padding:9px;font-size:12px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;}
+  .btn-copiar-todo:hover{background:rgba(34,197,94,0.2);}
+  .rules-pre{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;font-family:'DM Mono',monospace;font-size:11px;color:var(--text2);white-space:pre;overflow:auto;max-height:180px;margin-top:10px;}
+  .rules-hint{font-size:11px;color:var(--text3);line-height:1.6;margin-top:8px;}
+  .rules-hint a{color:var(--blue);text-decoration:none;}
+  .rules-hint a:hover{text-decoration:underline;}
 </style>
 </head>
 <body>
@@ -214,6 +248,10 @@
   <div class="nav-item" onclick="mostrarSeccion('usuarios')">
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="2.5"/><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6"/></svg>
     Usuarios
+  </div>
+  <div class="nav-item" onclick="mostrarSeccion('nuevo-cliente')">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="5" r="2.5"/><path d="M1 13c0-2.8 2.2-5 5-5s5 2.2 5 5"/><line x1="13" y1="3" x2="13" y2="9"/><line x1="10" y1="6" x2="16" y2="6"/></svg>
+    Nuevo cliente
   </div>
   <div class="sidebar-footer">
     <div class="client-label">sesión admin</div>
@@ -345,6 +383,101 @@
       </table>
     </div>
     <div class="usuarios-toast" id="usuarios-toast"></div>
+  </div>
+
+  <!-- SECCIÓN: NUEVO CLIENTE -->
+  <div id="content-nuevo-cliente" class="content-section">
+    <div class="nc-grid">
+      <!-- Card izquierda: formulario -->
+      <div class="nc-card">
+        <div class="nc-card-title">Alta de nuevo cliente</div>
+        <div class="form-group">
+          <label class="form-label">Nombre del cliente</label>
+          <input class="form-input" id="nc-nombre" type="text" placeholder="ej: Distribuidora López"
+            oninput="ncActualizarId()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">ID (Firebase)</label>
+          <input class="form-input form-mono" id="nc-id" type="text" placeholder="auto-generado"
+            oninput="ncActualizarEmail()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email Firebase (se genera automáticamente)</label>
+          <input class="form-input form-mono" id="nc-email" type="text" readonly>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Contraseña</label>
+          <div class="pass-row">
+            <input class="form-input form-mono" id="nc-pass" type="text" readonly>
+            <button class="btn-regen" onclick="ncRegenerarPass()">↻ Nueva</button>
+          </div>
+        </div>
+        <button class="btn-crear" id="nc-btn-crear" onclick="ncCrearCliente()">
+          ＋ Crear cuenta en Firebase Auth
+        </button>
+        <div class="nc-status" id="nc-status"></div>
+      </div>
+
+      <!-- Card derecha: resultado + reglas -->
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div class="nc-card">
+          <div class="nc-card-title">Datos para el instalador</div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
+            Copiá estos datos y pegalos en el paso "Datos del cliente" del instalador.
+          </div>
+          <div class="result-box" id="nc-result-box" style="display:none">
+            <div class="result-row">
+              <span class="result-lbl">Nombre</span>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span class="result-val" id="res-nombre">—</span>
+                <button class="btn-copy-sm" onclick="copiarCampo('res-nombre')">copiar</button>
+              </div>
+            </div>
+            <div class="result-row">
+              <span class="result-lbl">ID</span>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span class="result-val" id="res-id">—</span>
+                <button class="btn-copy-sm" onclick="copiarCampo('res-id')">copiar</button>
+              </div>
+            </div>
+            <div class="result-row">
+              <span class="result-lbl">Email Firebase</span>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span class="result-val" id="res-email">—</span>
+                <button class="btn-copy-sm" onclick="copiarCampo('res-email')">copiar</button>
+              </div>
+            </div>
+            <div class="result-row">
+              <span class="result-lbl">Contraseña</span>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span class="result-val" id="res-pass">—</span>
+                <button class="btn-copy-sm" onclick="copiarCampo('res-pass')">copiar</button>
+              </div>
+            </div>
+            <button class="btn-copiar-todo" onclick="ncCopiarTodo()">
+              📋 Copiar todo al portapapeles
+            </button>
+          </div>
+          <div id="nc-result-placeholder" style="font-size:12px;color:var(--text3);padding:20px 0;text-align:center">
+            Creá el cliente para ver los datos aquí.
+          </div>
+        </div>
+
+        <div class="nc-card">
+          <div class="nc-card-title">Reglas de base de datos <span style="font-size:10px;font-weight:400;color:var(--text3)">(configurar una sola vez)</span></div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:8px">
+            Estas reglas aplican automáticamente a todos los clientes — no cambian al agregar nuevos.
+          </div>
+          <button class="btn-regen" style="padding:4px 12px;margin-bottom:8px" onclick="ncCopiarReglas()">
+            📋 Copiar reglas
+          </button>
+          <pre class="rules-pre" id="nc-rules-pre"></pre>
+          <div class="rules-hint">
+            Pegá el contenido en <a href="https://console.firebase.google.com/project/mir-soluciones-35859/database/mir-soluciones-35859-default-rtdb/rules" target="_blank">Firebase Console → Realtime Database → Rules</a>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -601,7 +734,7 @@ function parsearFecha(tsStr) {
 let _filtroAlertas = 'todas';
 
 function mostrarSeccion(seccion) {
-  ['overview','alertas','clientes','usuarios'].forEach(s => {
+  ['overview','alertas','clientes','usuarios','nuevo-cliente'].forEach(s => {
     const el = document.getElementById('content-' + s);
     if (el) el.classList.remove('active');
   });
@@ -614,6 +747,7 @@ function mostrarSeccion(seccion) {
   if (seccion === 'alertas')   renderAlertasGlobales(clientesData);
   if (seccion === 'clientes')  renderTablaClientes(clientesData);
   if (seccion === 'usuarios')  cargarUsuarios();
+  if (seccion === 'nuevo-cliente') ncInicializar();
 }
 
 // ── ALERTAS GLOBALES ──
@@ -896,6 +1030,144 @@ function _toastUsuarios(msg, esError) {
   t.style.borderColor = esError ? 'rgba(239,68,68,0.25)' : 'rgba(34,197,94,0.25)';
   t.style.opacity = '1';
   setTimeout(() => { t.style.opacity = '0'; }, 5000);
+}
+
+// ── NUEVO CLIENTE ──────────────────────────────────────────────────────────
+const FIREBASE_RULES = `{
+  "rules": {
+    "clientes": {
+      "$cliente_id": {
+        ".read":  "auth != null && auth.token.email === ($cliente_id + '@clientes.mir.internal')",
+        ".write": "auth != null && auth.token.email === ($cliente_id + '@clientes.mir.internal')"
+      }
+    },
+    "historial": {
+      "$cliente_id": {
+        ".read":  "auth != null && auth.token.email === ($cliente_id + '@clientes.mir.internal')",
+        ".write": "auth != null && auth.token.email === ($cliente_id + '@clientes.mir.internal')"
+      }
+    }
+  }
+}`;
+
+let _ncYaInicializado = false;
+
+function ncInicializar() {
+  if (!_ncYaInicializado) {
+    ncRegenerarPass();
+    document.getElementById('nc-rules-pre').textContent = FIREBASE_RULES;
+    _ncYaInicializado = true;
+  }
+}
+
+function ncSlugify(str) {
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'cliente';
+}
+
+function ncActualizarId() {
+  const nombre = document.getElementById('nc-nombre').value;
+  document.getElementById('nc-id').value = ncSlugify(nombre);
+  ncActualizarEmail();
+}
+
+function ncActualizarEmail() {
+  const id = document.getElementById('nc-id').value.trim() || 'cliente';
+  document.getElementById('nc-email').value = id + '@clientes.mir.internal';
+}
+
+function ncRegenerarPass() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#';
+  const arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  const pass = Array.from(arr, b => chars[b % chars.length]).join('');
+  document.getElementById('nc-pass').value = pass;
+}
+
+async function ncCrearCliente() {
+  const nombre = document.getElementById('nc-nombre').value.trim();
+  const id     = document.getElementById('nc-id').value.trim();
+  const email  = document.getElementById('nc-email').value.trim();
+  const pass   = document.getElementById('nc-pass').value;
+  const btn    = document.getElementById('nc-btn-crear');
+  const status = document.getElementById('nc-status');
+
+  if (!nombre || !id || !email || !pass) {
+    status.textContent = 'Completá el nombre del cliente primero.';
+    status.className = 'nc-status err';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Creando...';
+  status.className = 'nc-status';
+
+  try {
+    const url = `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${firebaseConfig.apiKey}`;
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ email, password: pass, returnSecureToken: false })
+    });
+    const data = await resp.json();
+
+    if (data.error) {
+      const msg = data.error.message === 'EMAIL_EXISTS'
+        ? 'Ya existe un usuario con ese email. Cambiá el ID del cliente.'
+        : data.error.message;
+      throw new Error(msg);
+    }
+
+    // Éxito — mostrar datos
+    document.getElementById('res-nombre').textContent = nombre;
+    document.getElementById('res-id').textContent     = id;
+    document.getElementById('res-email').textContent  = email;
+    document.getElementById('res-pass').textContent   = pass;
+    document.getElementById('nc-result-box').style.display = 'block';
+    document.getElementById('nc-result-placeholder').style.display = 'none';
+
+    status.textContent = `✓ Usuario creado correctamente. UID: ${data.localId || '(ver Firebase Console)'}`;
+    status.className = 'nc-status ok';
+
+    btn.textContent = '✓ Creado';
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.textContent = '＋ Crear cuenta en Firebase Auth';
+    }, 3000);
+
+  } catch(e) {
+    status.textContent = '✗ ' + e.message;
+    status.className = 'nc-status err';
+    btn.disabled = false;
+    btn.textContent = '＋ Crear cuenta en Firebase Auth';
+  }
+}
+
+function copiarCampo(id) {
+  const val = document.getElementById(id).textContent;
+  navigator.clipboard.writeText(val).catch(() => {});
+}
+
+function ncCopiarTodo() {
+  const nombre = document.getElementById('res-nombre').textContent;
+  const id     = document.getElementById('res-id').textContent;
+  const email  = document.getElementById('res-email').textContent;
+  const pass   = document.getElementById('res-pass').textContent;
+  const txt = `Cliente: ${nombre}\nID: ${id}\nEmail Firebase: ${email}\nContraseña Firebase: ${pass}`;
+  navigator.clipboard.writeText(txt).then(() => {
+    const btn = event.currentTarget;
+    const orig = btn.textContent;
+    btn.textContent = '✓ Copiado al portapapeles';
+    setTimeout(() => btn.textContent = orig, 2000);
+  }).catch(() => alert(txt));
+}
+
+function ncCopiarReglas() {
+  navigator.clipboard.writeText(FIREBASE_RULES).then(() => {
+    const btn = event.currentTarget;
+    btn.textContent = '✓ Copiado';
+    setTimeout(() => btn.textContent = '📋 Copiar reglas', 2000);
+  }).catch(() => alert(FIREBASE_RULES));
 }
 </script>
 </body>
