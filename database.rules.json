@@ -1,0 +1,16 @@
+{
+  "rules": {
+    "clientes": {
+      ".read":  "auth != null",
+      ".write": "auth != null"
+    },
+    "usuarios": {
+      ".read":  "auth != null",
+      ".write": "auth != null"
+    },
+    "admin_config": {
+      ".read":  "auth != null && auth.token.email === 'admin@mirsoluciones.com'",
+      ".write": "auth != null && auth.token.email === 'admin@mirsoluciones.com'"
+    }
+  }
+}

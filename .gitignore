@@ -1,0 +1,22 @@
+# Firebase credentials — NEVER commit
+mir-clave.json
+
+# Local runtime files
+mir_ultima_velocidad.json
+mir_dispositivos_conocidos.json
+mir_offline_*.json
+mir_config.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Node / Firebase tools
+node_modules/
+.firebase/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

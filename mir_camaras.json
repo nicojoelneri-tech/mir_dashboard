@@ -1,0 +1,10 @@
+[
+  {
+    "nombre": "NVR cocina",
+    "marca": "dahua",
+    "ip": "127.0.0.1",
+    "usuario": "admin",
+    "password": "test",
+    "puerto": 8766
+  }
+]

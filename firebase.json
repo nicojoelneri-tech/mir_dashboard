@@ -1,0 +1,13 @@
+{
+  "hosting": {
+    "public": "public",
+    "ignore": ["firebase.json", "**/.*"],
+    "rewrites": [
+      {"source": "/admin", "destination": "/mir-admin.html"},
+      {"source": "/**", "destination": "/index.html"}
+    ]
+  },
+  "database": {
+    "rules": "database.rules.json"
+  }
+}
