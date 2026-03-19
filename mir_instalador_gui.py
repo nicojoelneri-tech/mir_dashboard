@@ -62,11 +62,15 @@ def slugify(nombre):
     return re.sub(r"[^a-z0-9]+", "_", s.lower()).strip("_") or "cliente"
 
 def pkg_instalado(nombre):
-    try:
-        __import__(nombre.replace("-", "_").split("[")[0])
-        return True
-    except ImportError:
-        return False
+    """Verifica si un paquete está instalado usando un subprocess separado
+    (evita problemas con el import lock de Python en threads)."""
+    modulo = nombre.replace("-", "_").split("[")[0]
+    r = subprocess.run(
+        [sys.executable, "-c", f"import {modulo}"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        timeout=10
+    )
+    return r.returncode == 0
 
 def instalar_pkg(nombre, log_cb):
     log_cb(f"  Instalando {nombre}...")
@@ -369,6 +373,10 @@ class Instalador:
                             target=self._run_requisitos, daemon=True).start())
         btn.pack(pady=(14,0), anchor="w")
 
+        self._lbl_req_ok = tk.Label(f, text="", font=(FNT, 10, "bold"),
+                                    fg=C_VERDE, bg=C_BG)
+        self._lbl_req_ok.pack(anchor="w", pady=(6,0))
+
         self.btn_next.config(state="disabled")
         self._req_ok = False
 
@@ -418,6 +426,9 @@ class Instalador:
         if existe:
             self._req_ok = True
             self.root.after(0, lambda: self.btn_next.config(state="normal"))
+            self.root.after(0, lambda: self._lbl_req_ok.config(
+                text="✓ Todo listo — avanzando..."))
+            self.root.after(1500, self._next)  # auto-avanza después de 1.5s
 
     # ── Página 3: Datos del cliente ───────────────────────────────────────────
     def _pg_cliente(self):
