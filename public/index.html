@@ -588,7 +588,7 @@ const firebaseConfig = {
 const app  = firebase.initializeApp(firebaseConfig, 'clientApp');
 const auth = firebase.auth(app);
 const db   = firebase.database(app);
-auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
 
 // ── NÚMERO DE SOPORTE (cambiar por el de Mauro) ──
 const WA_NUMERO = "5491133613235"; // ⚠️ CAMBIAR por el número de Mauro antes de publicar
