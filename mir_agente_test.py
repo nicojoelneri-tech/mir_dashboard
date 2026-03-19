@@ -26,8 +26,9 @@ import xml.etree.ElementTree as ET
 CLIENTE_ID          = "clientedemo"
 FIREBASE_URL        = "https://mir-soluciones-35859-default-rtdb.firebaseio.com"
 FIREBASE_API_KEY    = "AIzaSyAiV60g7n6UdiHwXZ8S0dTbIBBk4bxdRZs"  # Web API key (público)
-CLIENTE_EMAIL       = ""   # ej: clientedemo@mir-soluciones.app
+CLIENTE_EMAIL       = ""   # ej: clientedemo@clientes.mir.internal
 CLIENTE_CONTRASENA  = ""   # contraseña del usuario Firebase de este cliente
+CLAVE_JSON          = ""   # ruta al service account (legacy — usar solo si no hay email/pass)
 
 INTERVALO_SEG       = 60   # intervalo general
 INTERVALO_ESCANEO   = 300  # escanear red cada 5 minutos
@@ -44,6 +45,7 @@ if os.path.exists(_cfg_path):
         FIREBASE_API_KEY   = _cfg.get("firebase_api_key",   FIREBASE_API_KEY)
         CLIENTE_EMAIL      = _cfg.get("cliente_email",      CLIENTE_EMAIL)
         CLIENTE_CONTRASENA = _cfg.get("cliente_contrasena", CLIENTE_CONTRASENA)
+        CLAVE_JSON         = _cfg.get("clave_json",         CLAVE_JSON)
         INTERVALO_SEG      = _cfg.get("intervalo_seg",      INTERVALO_SEG)
         INTERVALO_ESCANEO  = _cfg.get("intervalo_escaneo",  INTERVALO_ESCANEO)
     except Exception as _e:
@@ -205,7 +207,10 @@ firebase_token_expira  = 0
 firebase_refresh_token = None
 
 def obtener_token():
-    """Autenticación con Firebase usando email/password (sin service account)."""
+    """Autenticación con Firebase.
+    Modo 1 (preferido): email/password via Firebase Auth REST API.
+    Modo 2 (legacy):    service account JSON (para instalaciones anteriores al instalador).
+    """
     global firebase_token, firebase_token_expira, firebase_refresh_token
     import urllib.request as _ur
 
@@ -213,39 +218,70 @@ def obtener_token():
     if firebase_token and ahora < firebase_token_expira - 60:
         return firebase_token
 
-    # Intentar renovar con refresh token (evita login completo cada hora)
-    if firebase_refresh_token:
+    # ── Modo email/password ──────────────────────────────────────────────────
+    if CLIENTE_EMAIL and CLIENTE_CONTRASENA:
+        # Intentar renovar con refresh token (evita login completo cada hora)
+        if firebase_refresh_token:
+            try:
+                url  = f"https://securetoken.googleapis.com/v1/token?key={FIREBASE_API_KEY}"
+                body = json.dumps({"grant_type": "refresh_token",
+                                   "refresh_token": firebase_refresh_token}).encode()
+                req  = _ur.Request(url, data=body, headers={"Content-Type": "application/json"})
+                with _ur.urlopen(req, timeout=10) as resp:
+                    r = json.loads(resp.read().decode())
+                    firebase_token         = r["id_token"]
+                    firebase_refresh_token = r["refresh_token"]
+                    firebase_token_expira  = ahora + int(r.get("expires_in", 3600))
+                    return firebase_token
+            except Exception as e:
+                print(f"  [!] Token refresh error: {e}")
+
+        # Login inicial con email/password
         try:
-            url  = f"https://securetoken.googleapis.com/v1/token?key={FIREBASE_API_KEY}"
-            body = json.dumps({"grant_type": "refresh_token",
-                               "refresh_token": firebase_refresh_token}).encode()
+            url  = (f"https://identitytoolkit.googleapis.com/v1/"
+                    f"accounts:signInWithPassword?key={FIREBASE_API_KEY}")
+            body = json.dumps({"email": CLIENTE_EMAIL,
+                               "password": CLIENTE_CONTRASENA,
+                               "returnSecureToken": True}).encode()
             req  = _ur.Request(url, data=body, headers={"Content-Type": "application/json"})
             with _ur.urlopen(req, timeout=10) as resp:
                 r = json.loads(resp.read().decode())
-                firebase_token         = r["id_token"]
-                firebase_refresh_token = r["refresh_token"]
-                firebase_token_expira  = ahora + int(r.get("expires_in", 3600))
+                firebase_token         = r["idToken"]
+                firebase_refresh_token = r["refreshToken"]
+                firebase_token_expira  = ahora + int(r.get("expiresIn", 3600))
                 return firebase_token
         except Exception as e:
-            print(f"  [!] Token refresh error: {e}")
+            print(f"  [!] Firebase login error: {e}")
+            return None
 
-    # Login inicial con email/password
-    try:
-        url  = (f"https://identitytoolkit.googleapis.com/v1/"
-                f"accounts:signInWithPassword?key={FIREBASE_API_KEY}")
-        body = json.dumps({"email": CLIENTE_EMAIL,
-                           "password": CLIENTE_CONTRASENA,
-                           "returnSecureToken": True}).encode()
-        req  = _ur.Request(url, data=body, headers={"Content-Type": "application/json"})
-        with _ur.urlopen(req, timeout=10) as resp:
-            r = json.loads(resp.read().decode())
-            firebase_token         = r["idToken"]
-            firebase_refresh_token = r["refreshToken"]
-            firebase_token_expira  = ahora + int(r.get("expiresIn", 3600))
+    # ── Modo service account (legacy) ────────────────────────────────────────
+    if CLAVE_JSON and os.path.exists(CLAVE_JSON):
+        try:
+            try:
+                import google.oauth2.service_account as _sa
+                import google.auth.transport.requests as _ga
+            except ImportError:
+                print("  [..] Instalando google-auth...")
+                subprocess.run([sys.executable, "-m", "pip", "install",
+                                "google-auth", "google-auth-httplib2", "--quiet"],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
+                import google.oauth2.service_account as _sa
+                import google.auth.transport.requests as _ga
+            creds = _sa.Credentials.from_service_account_file(
+                CLAVE_JSON,
+                scopes=["https://www.googleapis.com/auth/firebase",
+                        "https://www.googleapis.com/auth/userinfo.email"]
+            )
+            req = _ga.Request()
+            creds.refresh(req)
+            firebase_token        = creds.token
+            firebase_token_expira = ahora + 3500
             return firebase_token
-    except Exception as e:
-        print(f"  [!] Firebase login error: {e}")
-        return None
+        except Exception as e:
+            print(f"  [!] Service account auth error: {e}")
+            return None
+
+    return None
 
 def enviar_firebase(datos, nodo="ultimo_reporte"):
     try:
@@ -912,16 +948,28 @@ if os.path.exists(archivo_dispositivos):
 
 print()
 separador()
-print("  Mir Soluciones — Agente v2.0 con escaneo de red")
+print("  Mir Soluciones — Agente v2.1 con escaneo de red")
 print(f"  Cliente: {CLIENTE_ID}")
 print("  Presiona Ctrl+C para detener")
 separador()
 
-if not CLIENTE_EMAIL or not CLIENTE_CONTRASENA:
+_tiene_email_pass    = bool(CLIENTE_EMAIL and CLIENTE_CONTRASENA)
+_tiene_service_acct  = bool(CLAVE_JSON and os.path.exists(CLAVE_JSON))
+if not _tiene_email_pass and not _tiene_service_acct:
     print("\n  [ERROR] Faltan credenciales en mir_config.json")
-    print("  Ejecutá el instalador (mir_instalador_gui.py) para configurar el agente.")
-    input("\n  Presiona Enter para salir...")
+    print("  Opciones:")
+    print("  1. Ejecutá el instalador (mir_instalador_gui.py) para configurar con email/contraseña.")
+    print("  2. O agregá 'clave_json' en mir_config.json apuntando al service account.")
+    try:
+        input("\n  Presiona Enter para salir...")
+    except EOFError:
+        pass
     exit(1)
+
+if _tiene_service_acct and not _tiene_email_pass:
+    print("  [i] Modo autenticación: service account (legacy)")
+elif _tiene_email_pass:
+    print(f"  [i] Modo autenticación: email/password ({CLIENTE_EMAIL})")
 
 config_camaras = cargar_config_camaras()
 
