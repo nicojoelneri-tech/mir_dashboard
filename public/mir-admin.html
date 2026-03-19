@@ -1118,6 +1118,21 @@ async function ncCrearCliente() {
       throw new Error(msg);
     }
 
+    // Registrar en /usuarios/{uid} para que el dashboard mapee correctamente el cliente
+    if (data.localId) {
+      try {
+        await db.ref('usuarios/' + data.localId).set({
+          cliente_id:          id,
+          nombre:              nombre,
+          email:               email,
+          debe_cambiar_clave:  false,
+          creado_ts:           new Date().toISOString()
+        });
+      } catch(dbErr) {
+        console.warn('No se pudo escribir /usuarios/', dbErr);
+      }
+    }
+
     // Éxito — mostrar datos
     document.getElementById('res-nombre').textContent = nombre;
     document.getElementById('res-id').textContent     = id;
