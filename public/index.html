@@ -749,12 +749,33 @@ function iniciarMonitoreo(clienteId) {
   _historialInterval = setInterval(() => cargarHistorial(clienteId), 600000);
 }
 
-// ── HISTORIAL DE VELOCIDAD ──
+// ── HISTORIAL DE VELOCIDAD + UPTIME BARRA ──
 function cargarHistorial(clienteId) {
   const desde = String(Math.floor(Date.now() / 1000) - 86400);
+  // Cargar historial de velocidad
   db.ref(`clientes/${clienteId}/historial`)
     .orderByKey().startAt(desde)
     .once('value', snap => renderHistorial(snap.val() || {}));
+  // Cargar uptime_barra para persistir la línea de tiempo (últimas 2h)
+  const desdeUptime = String(Math.floor(Date.now() / 1000) - 7200);
+  db.ref(`clientes/${clienteId}/uptime_barra`)
+    .orderByKey().startAt(desdeUptime)
+    .once('value', snap => {
+      const raw = snap.val();
+      if (!raw) return;
+      const nuevas = Object.entries(raw)
+        .map(([k, v]) => ({ ts: parseInt(k) * 1000, online: v.online !== false }))
+        .sort((a, b) => a.ts - b.ts);
+      if (nuevas.length === 0) return;
+      // Fusionar con entradas en memoria: conservar las más recientes únicas
+      const tsSet = new Set(historialUptime.map(h => h.ts));
+      for (const e of nuevas) {
+        if (!tsSet.has(e.ts)) historialUptime.push(e);
+      }
+      historialUptime.sort((a, b) => a.ts - b.ts);
+      renderUptime();
+      renderAlertas();
+    });
 }
 
 function renderHistorial(data) {

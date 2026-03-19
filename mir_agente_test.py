@@ -239,6 +239,22 @@ def enviar_firebase(datos, nodo="ultimo_reporte"):
         guardar_local(datos)
         return False
 
+def guardar_uptime_barra(online):
+    """Guarda entrada compacta de uptime en /uptime_barra/{ts} — un registro por ciclo."""
+    try:
+        import urllib.request
+        token = obtener_token()
+        if not token:
+            return
+        ts_key = str(int(time.time()))
+        url = f"{FIREBASE_URL}/clientes/{CLIENTE_ID}/uptime_barra/{ts_key}.json"
+        body = json.dumps({"online": online}).encode("utf-8")
+        req  = urllib.request.Request(url, data=body, method="PUT",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=6)
+    except Exception:
+        pass
+
 def guardar_historial(reporte):
     """Guarda entrada compacta en /historial y poda entradas > 30 días."""
     try:
@@ -385,6 +401,30 @@ def limpiar_alertas_firebase():
                 headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
             urllib.request.urlopen(req_p, timeout=10)
             print(f"  [OK] Firebase: {len(viejas)} alerta(s) ignorada(s) vieja(s) podada(s).")
+    except Exception:
+        pass
+
+def limpiar_uptime_barra():
+    """Poda entradas de uptime_barra con más de 24 horas."""
+    try:
+        import urllib.request
+        token = obtener_token()
+        if not token:
+            return
+        limite = str(int(time.time()) - 86400)
+        url = (f"{FIREBASE_URL}/clientes/{CLIENTE_ID}/uptime_barra.json"
+               f'?orderBy=%22%24key%22&endAt=%22{limite}%22')
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            viejas = json.loads(resp.read()) or {}
+        if viejas:
+            patch = json.dumps({k: None for k in viejas}).encode("utf-8")
+            req_p = urllib.request.Request(
+                f"{FIREBASE_URL}/clientes/{CLIENTE_ID}/uptime_barra.json",
+                data=patch, method="PATCH",
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+            urllib.request.urlopen(req_p, timeout=10)
+            print(f"  [OK] uptime_barra: {len(viejas)} entrada(s) vieja(s) podada(s).")
     except Exception:
         pass
 
@@ -893,36 +933,41 @@ while True:
     print(f"  Cloudflare      1.1.1.1            {estado_cf}")
 
     # ── VELOCIDAD ──
-    # Archivo de lock para evitar que múltiples instancias corran speedtest en simultáneo
     bajada, subida = None, None
+    _ultimo_cache = {}
     archivo_lock = archivo_velocidad + ".lock"
-    medir = True
 
+    # Cargar caché (válido o como fallback)
     if os.path.exists(archivo_velocidad):
         try:
             with open(archivo_velocidad) as f:
-                ultima = json.load(f)
-            if ahora - ultima.get("ts", 0) < 600:
-                bajada, subida = ultima.get("bajada"), ultima.get("subida")
-                medir = False
+                _ultimo_cache = json.load(f)
         except Exception:
             pass
 
-    if medir:
-        # Si otro agente ya está corriendo el speedtest, esperar y reintentar
+    cache_fresco = ahora - _ultimo_cache.get("ts", 0) < 600
+    if cache_fresco:
+        bajada, subida = _ultimo_cache.get("bajada"), _ultimo_cache.get("subida")
+
+    if not cache_fresco:
         lock_activo = os.path.exists(archivo_lock) and (ahora - os.path.getmtime(archivo_lock) < 120)
         if lock_activo:
-            medir = False  # otro proceso ya lo está midiendo, saltear esta vez
+            # Otro proceso mide: usar valores anteriores como fallback
+            bajada, subida = _ultimo_cache.get("bajada"), _ultimo_cache.get("subida")
         else:
             try:
-                open(archivo_lock, "w").close()  # crear lock
-                bajada, subida = medir_velocidad()
-                if bajada is not None:
+                open(archivo_lock, "w").close()
+                nuevo_b, nuevo_s = medir_velocidad()
+                if nuevo_b is not None:
+                    bajada, subida = nuevo_b, nuevo_s
                     try:
                         with open(archivo_velocidad, "w") as f:
                             json.dump({"ts": ahora, "bajada": bajada, "subida": subida}, f)
                     except Exception:
                         pass
+                else:
+                    # Speedtest falló: usar último valor conocido como fallback
+                    bajada, subida = _ultimo_cache.get("bajada"), _ultimo_cache.get("subida")
             finally:
                 try:
                     os.remove(archivo_lock)
@@ -1049,6 +1094,10 @@ while True:
     ok = enviar_firebase(reporte)
     print("OK ✓" if ok else "ERROR")
 
+    # ── UPTIME BARRA (cada ciclo, para persistencia en el dashboard) ──
+    if ok:
+        guardar_uptime_barra(inet_ok)
+
     # ── HISTORIAL (cada 10 minutos) ──
     if ok and ahora - ultima_historial >= INTERVALO_HISTORIAL:
         guardar_historial(reporte)
@@ -1059,6 +1108,7 @@ while True:
         print("\n  [..] Ejecutando limpieza diaria...")
         limpiar_dispositivos_viejos()
         limpiar_alertas_firebase()
+        limpiar_uptime_barra()
         reintentar_offline()
         ultima_limpieza = ahora
         print("  [OK] Limpieza diaria completada.")
