@@ -150,7 +150,7 @@ class Instalador:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Instalador Mir Soluciones")
-        self.root.geometry("640x500")
+        self.root.geometry("640x580")
         self.root.resizable(False, False)
         self.root.configure(bg=C_BG)
         try:
@@ -260,7 +260,10 @@ class Instalador:
         self._draw_steps()
         self.lbl_step_title.config(text=STEPS[idx])
         self.btn_back.config(state="normal" if idx > 0 else "disabled")
-        self.btn_next.config(text="Finalizar" if idx == len(STEPS)-1 else "Siguiente →")
+        self.btn_next.config(
+            state="normal",
+            text="Finalizar" if idx == len(STEPS)-1 else "Siguiente →"
+        )
         pages = [self._pg_bienvenida, self._pg_requisitos, self._pg_cliente,
                  self._pg_camaras, self._pg_instalar, self._pg_listo]
         pages[idx]()
@@ -499,9 +502,15 @@ class Instalador:
         self._toggle_cam_form()
 
     def _toggle_cam_form(self):
-        for w in self._cam_form.winfo_children():
-            w.configure(state="normal" if self.v_tiene_cam.get() else "disabled") \
-                if hasattr(w, "configure") else None
+        state = "normal" if self.v_tiene_cam.get() else "disabled"
+        def set_state(widget):
+            for w in widget.winfo_children():
+                try:
+                    w.configure(state=state)
+                except tk.TclError:
+                    pass  # Frame y otros contenedores no tienen state
+                set_state(w)  # recursivo para widgets anidados
+        set_state(self._cam_form)
 
     def _build_cam_form(self):
         frm = self._cam_form
