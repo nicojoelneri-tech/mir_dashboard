@@ -14,13 +14,13 @@ from tkinter import ttk, messagebox, filedialog
 import os, sys, json, re, subprocess, threading, unicodedata, webbrowser
 
 # ── Rutas ─────────────────────────────────────────────────────────────────────
-FIREBASE_URL  = "https://mir-soluciones-35859-default-rtdb.firebaseio.com"
-DASHBOARD_URL = "https://mir-soluciones-35859.web.app"
-DIR           = os.path.dirname(os.path.abspath(__file__))
-AGENT_FILE    = os.path.join(DIR, "mir_agente_test.py")
-CONFIG_FILE   = os.path.join(DIR, "mir_config.json")
-CAMARAS_FILE  = os.path.join(DIR, "mir_camaras.json")
-CLAVE_DEFAULT = os.path.join(DIR, "mir-clave.json")
+FIREBASE_URL     = "https://mir-soluciones-35859-default-rtdb.firebaseio.com"
+FIREBASE_API_KEY = "AIzaSyAiV60g7n6UdiHwXZ8S0dTbIBBk4bxdRZs"  # Web API key (público)
+DASHBOARD_URL    = "https://mir-soluciones-35859.web.app"
+DIR              = os.path.dirname(os.path.abspath(__file__))
+AGENT_FILE       = os.path.join(DIR, "mir_agente_test.py")
+CONFIG_FILE      = os.path.join(DIR, "mir_config.json")
+CAMARAS_FILE     = os.path.join(DIR, "mir_camaras.json")
 
 # ── Paleta ────────────────────────────────────────────────────────────────────
 C_HEADER  = "#1a2a4a"
@@ -81,21 +81,24 @@ def instalar_pkg(nombre, log_cb):
     )
     return r.returncode == 0
 
-def test_firebase(cliente_id, clave_json):
+def test_firebase(cliente_id, email, contrasena):
+    """Verifica credenciales Firebase del cliente usando email/password."""
     try:
-        import google.oauth2.service_account as sa
-        import google.auth.transport.requests as ga
         import urllib.request
-        creds = sa.Credentials.from_service_account_file(
-            clave_json,
-            scopes=["https://www.googleapis.com/auth/firebase",
-                    "https://www.googleapis.com/auth/userinfo.email"]
-        )
-        creds.refresh(ga.Request())
-        url = f"{FIREBASE_URL}/clientes/{cliente_id}.json"
-        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {creds.token}"})
+        # Login con email/password
+        url  = (f"https://identitytoolkit.googleapis.com/v1/"
+                f"accounts:signInWithPassword?key={FIREBASE_API_KEY}")
+        body = json.dumps({"email": email, "password": contrasena,
+                           "returnSecureToken": True}).encode()
+        req  = urllib.request.Request(url, data=body,
+                    headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=10) as resp:
-            return resp.status in (200, 204), ""
+            token = json.loads(resp.read().decode())["idToken"]
+        # Verificar acceso al nodo del cliente
+        url2 = f"{FIREBASE_URL}/clientes/{cliente_id}.json?auth={token}"
+        req2 = urllib.request.Request(url2)
+        with urllib.request.urlopen(req2, timeout=10) as resp2:
+            return resp2.status in (200, 204), ""
     except Exception as e:
         return False, str(e)
 
@@ -165,7 +168,8 @@ class Instalador:
         # Variables de formulario
         self.v_nombre    = tk.StringVar()
         self.v_id        = tk.StringVar()
-        self.v_clave     = tk.StringVar(value=CLAVE_DEFAULT if os.path.exists(CLAVE_DEFAULT) else "")
+        self.v_email     = tk.StringVar()   # email Firebase del cliente
+        self.v_contrasena= tk.StringVar()   # contraseña Firebase del cliente
         self.v_cam_nom   = tk.StringVar()
         self.v_cam_marca = tk.StringVar(value="hikvision")
         self.v_cam_ip    = tk.StringVar()
@@ -290,10 +294,9 @@ class Instalador:
     # ── Validaciones por página ───────────────────────────────────────────────
     def _validar(self, page):
         if page == 1:  # Requisitos
-            if not os.path.exists(self.v_clave.get()):
-                messagebox.showwarning("Requisito faltante",
-                    "El archivo mir-clave.json no fue encontrado.\n"
-                    "Copiá el archivo en la carpeta del instalador y verificá la ruta.")
+            if not self._req_ok:
+                messagebox.showwarning("Verificación pendiente",
+                    "Hacé click en 'Verificar e instalar' antes de continuar.")
                 return False
         if page == 2:  # Cliente
             if not self.v_nombre.get().strip():
@@ -301,6 +304,12 @@ class Instalador:
                 return False
             if not self.v_id.get().strip():
                 messagebox.showwarning("Dato requerido", "El ID del cliente no puede estar vacío.")
+                return False
+            if not self.v_email.get().strip():
+                messagebox.showwarning("Dato requerido", "Ingresá el email Firebase del cliente.")
+                return False
+            if not self.v_contrasena.get().strip():
+                messagebox.showwarning("Dato requerido", "Ingresá la contraseña Firebase del cliente.")
                 return False
         return True
 
@@ -338,15 +347,14 @@ class Instalador:
         tk.Label(f, text="El sistema verificará e instalará lo necesario automáticamente.",
                  font=(FNT, 9), fg=C_GRAY, bg=C_BG).pack(anchor="w", pady=(2,12))
 
-        # Items de verificación
         items = [
-            ("python",      "Python " + sys.version.split()[0], True),
-            ("google.auth", "Google Auth (Firebase)",           False),
-            ("speedtest",   "Speedtest CLI",                    False),
-            ("clave_json",  "Archivo mir-clave.json",           False),
+            ("python",    "Python " + sys.version.split()[0]),
+            ("internet",  "Conexión a internet"),
+            ("agente",    "Archivo mir_agente_test.py"),
+            ("speedtest", "Speedtest CLI"),
         ]
         self._req_labels = {}
-        for key, label, _ in items:
+        for key, label in items:
             row = tk.Frame(f, bg=C_WHITE, relief="flat", bd=0)
             row.pack(fill="x", pady=3, ipady=6)
             tk.Frame(row, bg=C_GOLD, width=4).pack(side="left", fill="y")
@@ -357,18 +365,6 @@ class Instalador:
             lbl_st.pack(side="right")
             self._req_labels[key] = lbl_st
 
-        # Ruta a clave
-        tk.Label(f, text="Ruta a mir-clave.json:", font=(FNT, 9, "bold"),
-                 fg=C_TEXT, bg=C_BG).pack(anchor="w", pady=(14,2))
-        row_k = tk.Frame(f, bg=C_BG)
-        row_k.pack(fill="x")
-        tk.Entry(row_k, textvariable=self.v_clave, font=(FNT, 9),
-                 relief="solid", bd=1).pack(side="left", fill="x", expand=True)
-        tk.Button(row_k, text="...", font=(FNT, 9), bg=C_WHITE,
-                  relief="solid", bd=1, cursor="hand2",
-                  command=self._buscar_clave).pack(side="left", padx=(4,0))
-
-        # Botón verificar
         btn = tk.Button(f, text="▶  Verificar e instalar", font=(FNT, 10, "bold"),
                         fg=C_WHITE, bg=C_HEADER, relief="flat", bd=0,
                         cursor="hand2", padx=16, pady=8,
@@ -383,13 +379,6 @@ class Instalador:
         self.btn_next.config(state="disabled")
         self._req_ok = False
 
-    def _buscar_clave(self):
-        path = filedialog.askopenfilename(
-            title="Seleccioná mir-clave.json",
-            filetypes=[("JSON", "*.json"), ("Todos", "*.*")])
-        if path:
-            self.v_clave.set(path)
-
     def _set_req(self, key, ok, texto=None):
         lbl = self._req_labels.get(key)
         if not lbl:
@@ -400,17 +389,28 @@ class Instalador:
             lbl.config(text=texto or "✗ Fallo", fg=C_ROJO)
 
     def _run_requisitos(self):
+        import urllib.request as _ur
+        todo_ok = True
+
+        # Python (siempre OK si estamos acá)
         self.root.after(0, lambda: self._set_req("python", True,
             "✓ " + sys.version.split()[0]))
 
-        # google-auth
-        if pkg_instalado("google.auth"):
-            self.root.after(0, lambda: self._set_req("google.auth", True, "✓ Instalado"))
-        else:
-            self.root.after(0, lambda: self._set_req("google.auth", None, "⟳ Instalando..."))
-            ok_g = instalar_pkg("google-auth google-auth-httplib2", lambda m: None)
-            self.root.after(0, lambda: self._set_req(
-                "google.auth", ok_g, "✓ Instalado" if ok_g else "✗ Error"))
+        # Conexión a internet
+        try:
+            _ur.urlopen("https://www.google.com", timeout=5)
+            self.root.after(0, lambda: self._set_req("internet", True, "✓ Disponible"))
+        except Exception:
+            self.root.after(0, lambda: self._set_req("internet", False,
+                "✗ Sin conexión — verificá el cable/WiFi"))
+            todo_ok = False
+
+        # mir_agente_test.py
+        agente_ok = os.path.exists(AGENT_FILE)
+        self.root.after(0, lambda: self._set_req("agente", agente_ok,
+            "✓ Encontrado" if agente_ok else "✗ No encontrado — copialo a esta carpeta"))
+        if not agente_ok:
+            todo_ok = False
 
         # speedtest
         if pkg_instalado("speedtest"):
@@ -418,20 +418,20 @@ class Instalador:
         else:
             self.root.after(0, lambda: self._set_req("speedtest", None, "⟳ Instalando..."))
             ok_s = instalar_pkg("speedtest-cli", lambda m: None)
-            self.root.after(0, lambda: self._set_req(
-                "speedtest", ok_s, "✓ Instalado" if ok_s else "✗ Error"))
+            self.root.after(0, lambda ok=ok_s: self._set_req(
+                "speedtest", ok, "✓ Instalado" if ok else "✗ Error al instalar"))
+            if not ok_s:
+                todo_ok = False
 
-        # clave.json
-        existe = os.path.exists(self.v_clave.get())
-        self.root.after(0, lambda: self._set_req(
-            "clave_json", existe, "✓ Encontrado" if existe else "✗ No encontrado"))
-
-        if existe:
+        if todo_ok:
             self._req_ok = True
             self.root.after(0, lambda: self.btn_next.config(state="normal"))
             self.root.after(0, lambda: self._lbl_req_ok.config(
                 text="✓ Todo listo — avanzando..."))
-            self.root.after(1500, self._next)  # auto-avanza después de 1.5s
+            self.root.after(1500, self._next)
+        else:
+            self.root.after(0, lambda: self._lbl_req_ok.config(
+                text="✗ Corregí los errores y volvé a verificar.", fg=C_ROJO))
 
     # ── Página 3: Datos del cliente ───────────────────────────────────────────
     def _pg_cliente(self):
@@ -467,19 +467,22 @@ class Instalador:
 
         tk.Label(f, text="ID del cliente (se usa en Firebase) *", font=(FNT, 9, "bold"),
                  fg=C_TEXT, bg=C_BG).pack(anchor="w", pady=(10,2))
-        row_id = tk.Frame(f, bg=C_BG)
-        row_id.pack(fill="x")
-        tk.Entry(row_id, textvariable=self.v_id, font=(FNT, 10, "bold"),
+        tk.Entry(f, textvariable=self.v_id, font=(FNT, 10, "bold"),
                  relief="solid", bd=1, fg=C_HEADER).pack(fill="x", ipady=5)
         tk.Label(f, text="Solo letras minúsculas, números y guiones bajos.",
                  font=(FNT, 8), fg=C_GRAY, bg=C_BG).pack(anchor="w")
 
-        tk.Frame(f, bg=C_BORDER, height=1).pack(fill="x", pady=14)
+        tk.Frame(f, bg=C_BORDER, height=1).pack(fill="x", pady=10)
 
-        tk.Label(f, text="Dashboard del cliente", font=(FNT, 9, "bold"),
+        tk.Label(f, text="Credenciales Firebase del cliente", font=(FNT, 10, "bold"),
                  fg=C_TEXT, bg=C_BG).pack(anchor="w")
-        tk.Label(f, text=DASHBOARD_URL, font=(FNT, 9), fg="#2563eb", bg=C_BG,
-                 cursor="hand2").pack(anchor="w")
+        tk.Label(f, text="Creá el usuario en Firebase Auth antes de instalar. "
+                         "Email sugerido: ID@mir-soluciones.app",
+                 font=(FNT, 8), fg=C_GRAY, bg=C_BG, wraplength=540,
+                 justify="left").pack(anchor="w", pady=(2,6))
+
+        campo(f, "Email Firebase *", self.v_email, "ej: clientedemo@mir-soluciones.app")
+        campo(f, "Contraseña Firebase *", self.v_contrasena, show="•")
 
     # ── Página 4: Cámaras / NVR ───────────────────────────────────────────────
     def _pg_camaras(self):
@@ -637,27 +640,32 @@ class Instalador:
         self.root.after(0, lambda: self._prog.config(value=val))
 
     def _run_install(self):
-        pasos = 5
+        pasos = 6
         paso_val = 100 // pasos
 
         # 1. Dependencias
         self._log_write("▶ Verificando dependencias Python...")
-        for pkg, imp in [("google-auth", "google.auth"), ("speedtest-cli", "speedtest")]:
-            if not pkg_instalado(imp):
-                self._log_write(f"  Instalando {pkg}...")
-                instalar_pkg(pkg, self._log_write)
-            else:
-                self._log_write(f"  {imp}: ya instalado ✓")
+        if not pkg_instalado("speedtest"):
+            self._log_write("  Instalando speedtest-cli...")
+            instalar_pkg("speedtest-cli", self._log_write)
+        else:
+            self._log_write("  speedtest-cli: ya instalado ✓")
         self._set_prog(paso_val)
 
         # 2. Guardar config
         self._log_write("▶ Guardando configuración del cliente...")
-        cfg = {"cliente_id": self.v_id.get(), "firebase_url": FIREBASE_URL,
-               "clave_json": self.v_clave.get(),
-               "intervalo_seg": 60, "intervalo_escaneo": 300}
+        cfg = {
+            "cliente_id":        self.v_id.get(),
+            "firebase_url":      FIREBASE_URL,
+            "firebase_api_key":  FIREBASE_API_KEY,
+            "cliente_email":     self.v_email.get().strip(),
+            "cliente_contrasena":self.v_contrasena.get(),
+            "intervalo_seg":     60,
+            "intervalo_escaneo": 300
+        }
         with open(CONFIG_FILE, "w", encoding="utf-8") as fp:
             json.dump(cfg, fp, indent=2, ensure_ascii=False)
-        self._log_write(f"  mir_config.json guardado ✓")
+        self._log_write("  mir_config.json guardado ✓")
         self._set_prog(paso_val * 2)
 
         # 3. Guardar cámaras
@@ -668,25 +676,43 @@ class Instalador:
         self._log_write(f"  mir_camaras.json guardado ({len(cams)} equipo(s)) ✓")
         self._set_prog(paso_val * 3)
 
-        # 4. Test Firebase
-        self._log_write("▶ Verificando conexión a Firebase...")
-        ok_fb, err_fb = test_firebase(self.v_id.get(), self.v_clave.get())
+        # 4. Test Firebase con credenciales del cliente
+        self._log_write("▶ Verificando credenciales Firebase...")
+        ok_fb, err_fb = test_firebase(
+            self.v_id.get(), self.v_email.get().strip(), self.v_contrasena.get())
         if ok_fb:
             self._log_write("  Conexión a Firebase: OK ✓")
         else:
-            self._log_write(f"  Firebase: advertencia — {err_fb[:60]}")
+            self._log_write(f"  Firebase: advertencia — {err_fb[:80]}")
+            self._log_write("  Verificá que el usuario existe en Firebase Auth.")
             self._log_write("  (El agente reintentará automáticamente al iniciar)")
         self._set_prog(paso_val * 4)
 
-        # 5. Autostart
+        # 5. Excluir de Windows Defender (reduce falsos positivos)
+        self._log_write("▶ Configurando exclusión en Windows Defender...")
+        try:
+            r = subprocess.run(
+                ["powershell", "-Command",
+                 f'Add-MpPreference -ExclusionPath "{DIR}"'],
+                capture_output=True, text=True, timeout=20
+            )
+            if r.returncode == 0:
+                self._log_write("  Exclusión de Defender configurada ✓")
+            else:
+                self._log_write("  Defender: sin permisos de admin (no crítico)")
+        except Exception:
+            self._log_write("  Defender: omitido (no disponible en este sistema)")
+        self._set_prog(paso_val * 5)
+
+        # 6. Autostart
         if self.v_autostart.get():
             self._log_write("▶ Configurando inicio automático...")
             ok_at, metodo = configurar_autostart(self.v_id.get())
             if ok_at:
                 self._log_write(f"  Inicio automático configurado: {metodo} ✓")
             else:
-                self._log_write(f"  Advertencia: no se pudo configurar inicio automático.")
-                self._log_write(f"  Podés hacerlo manualmente desde el Programador de tareas.")
+                self._log_write("  Sin permisos para Programador de tareas.")
+                self._log_write("  Alternativa: agregá el .bat a la carpeta Inicio manualmente.")
 
         self._set_prog(100)
         self._log_write("\n✓ Instalación completada.")

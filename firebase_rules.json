@@ -1,0 +1,16 @@
+{
+  "rules": {
+    "clientes": {
+      "$cliente_id": {
+        ".read":  "auth != null && auth.token.email === ($cliente_id + '@mir-soluciones.app')",
+        ".write": "auth != null && auth.token.email === ($cliente_id + '@mir-soluciones.app')"
+      }
+    },
+    "historial": {
+      "$cliente_id": {
+        ".read":  "auth != null && auth.token.email === ($cliente_id + '@mir-soluciones.app')",
+        ".write": "auth != null && auth.token.email === ($cliente_id + '@mir-soluciones.app')"
+      }
+    }
+  }
+}
