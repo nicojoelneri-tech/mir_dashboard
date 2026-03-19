@@ -26,9 +26,11 @@ import xml.etree.ElementTree as ET
 CLIENTE_ID          = "clientedemo"
 FIREBASE_URL        = "https://mir-soluciones-35859-default-rtdb.firebaseio.com"
 FIREBASE_API_KEY    = "AIzaSyAiV60g7n6UdiHwXZ8S0dTbIBBk4bxdRZs"  # Web API key (público)
-CLIENTE_EMAIL       = ""   # ej: clientedemo@clientes.mir.internal
-CLIENTE_CONTRASENA  = ""   # contraseña del usuario Firebase de este cliente
 CLAVE_JSON          = ""   # ruta al service account (legacy — usar solo si no hay email/pass)
+
+# Credenciales del agente compartido — no exponer al cliente
+_AGENTE_EMAIL      = "agente@mir-soluciones.internal"
+_AGENTE_CONTRASENA = "4e7cee98cf"
 
 INTERVALO_SEG       = 60   # intervalo general
 INTERVALO_ESCANEO   = 300  # escanear red cada 5 minutos
@@ -40,14 +42,12 @@ if os.path.exists(_cfg_path):
     try:
         with open(_cfg_path, encoding="utf-8") as _f:
             _cfg = json.load(_f)
-        CLIENTE_ID         = _cfg.get("cliente_id",         CLIENTE_ID)
-        FIREBASE_URL       = _cfg.get("firebase_url",       FIREBASE_URL)
-        FIREBASE_API_KEY   = _cfg.get("firebase_api_key",   FIREBASE_API_KEY)
-        CLIENTE_EMAIL      = _cfg.get("cliente_email",      CLIENTE_EMAIL)
-        CLIENTE_CONTRASENA = _cfg.get("cliente_contrasena", CLIENTE_CONTRASENA)
-        CLAVE_JSON         = _cfg.get("clave_json",         CLAVE_JSON)
-        INTERVALO_SEG      = _cfg.get("intervalo_seg",      INTERVALO_SEG)
-        INTERVALO_ESCANEO  = _cfg.get("intervalo_escaneo",  INTERVALO_ESCANEO)
+        CLIENTE_ID        = _cfg.get("cliente_id",        CLIENTE_ID)
+        FIREBASE_URL      = _cfg.get("firebase_url",      FIREBASE_URL)
+        FIREBASE_API_KEY  = _cfg.get("firebase_api_key",  FIREBASE_API_KEY)
+        CLAVE_JSON        = _cfg.get("clave_json",        CLAVE_JSON)
+        INTERVALO_SEG     = _cfg.get("intervalo_seg",     INTERVALO_SEG)
+        INTERVALO_ESCANEO = _cfg.get("intervalo_escaneo", INTERVALO_ESCANEO)
     except Exception as _e:
         print(f"  [!] Error leyendo mir_config.json: {_e}")
 
@@ -218,8 +218,8 @@ def obtener_token():
     if firebase_token and ahora < firebase_token_expira - 60:
         return firebase_token
 
-    # ── Modo email/password ──────────────────────────────────────────────────
-    if CLIENTE_EMAIL and CLIENTE_CONTRASENA:
+    # ── Modo email/password (usuario agente compartido) ──────────────────────
+    if _AGENTE_EMAIL and _AGENTE_CONTRASENA:
         # Intentar renovar con refresh token (evita login completo cada hora)
         if firebase_refresh_token:
             try:
@@ -240,8 +240,8 @@ def obtener_token():
         try:
             url  = (f"https://identitytoolkit.googleapis.com/v1/"
                     f"accounts:signInWithPassword?key={FIREBASE_API_KEY}")
-            body = json.dumps({"email": CLIENTE_EMAIL,
-                               "password": CLIENTE_CONTRASENA,
+            body = json.dumps({"email": _AGENTE_EMAIL,
+                               "password": _AGENTE_CONTRASENA,
                                "returnSecureToken": True}).encode()
             req  = _ur.Request(url, data=body, headers={"Content-Type": "application/json"})
             with _ur.urlopen(req, timeout=10) as resp:
@@ -952,23 +952,11 @@ print(f"  Cliente: {CLIENTE_ID}")
 print("  Presiona Ctrl+C para detener")
 separador()
 
-_tiene_email_pass    = bool(CLIENTE_EMAIL and CLIENTE_CONTRASENA)
-_tiene_service_acct  = bool(CLAVE_JSON and os.path.exists(CLAVE_JSON))
-if not _tiene_email_pass and not _tiene_service_acct:
-    print("\n  [ERROR] Faltan credenciales en mir_config.json")
-    print("  Opciones:")
-    print("  1. Ejecutá el instalador (mir_instalador_gui.py) para configurar con email/contraseña.")
-    print("  2. O agregá 'clave_json' en mir_config.json apuntando al service account.")
-    try:
-        input("\n  Presiona Enter para salir...")
-    except EOFError:
-        pass
-    exit(1)
-
-if _tiene_service_acct and not _tiene_email_pass:
+_tiene_service_acct = bool(CLAVE_JSON and os.path.exists(CLAVE_JSON))
+if _tiene_service_acct:
     print("  [i] Modo autenticación: service account (legacy)")
-elif _tiene_email_pass:
-    print(f"  [i] Modo autenticación: email/password ({CLIENTE_EMAIL})")
+else:
+    print(f"  [i] Modo autenticación: agente compartido ({_AGENTE_EMAIL})")
 
 config_camaras = cargar_config_camaras()
 

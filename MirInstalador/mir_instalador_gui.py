@@ -17,6 +17,8 @@ import os, sys, json, re, subprocess, threading, unicodedata, webbrowser
 FIREBASE_URL     = "https://mir-soluciones-35859-default-rtdb.firebaseio.com"
 FIREBASE_API_KEY = "AIzaSyAiV60g7n6UdiHwXZ8S0dTbIBBk4bxdRZs"  # Web API key (público)
 DASHBOARD_URL    = "https://mir-soluciones-35859.web.app"
+AGENTE_EMAIL     = "agente@mir-soluciones.internal"
+AGENTE_CONTRASENA= "4e7cee98cf"
 DIR              = os.path.dirname(os.path.abspath(__file__))
 AGENT_FILE       = os.path.join(DIR, "mir_agente_test.py")
 CONFIG_FILE      = os.path.join(DIR, "mir_config.json")
@@ -123,15 +125,24 @@ def configurar_autostart(cliente_id):
     if not os.path.exists(pythonw):
         pythonw = sys.executable
     bat = os.path.join(DIR, "mir_inicio.bat")
+    vbs = os.path.join(DIR, "mir_inicio.vbs")
+
+    # Bat que lanza pythonw (sin ventana de consola)
     with open(bat, "w", encoding="utf-8") as f:
         f.write(f'@echo off\r\ncd /d "{DIR}"\r\nset PYTHONIOENCODING=utf-8\r\n"{pythonw}" "{AGENT_FILE}"\r\n')
 
-    # Intento 1: Programador de tareas (funciona con y sin admin en Win10/11)
+    # VBS que lanza el bat completamente invisible (sin ventana CMD)
+    with open(vbs, "w", encoding="utf-8") as f:
+        f.write(
+            f'Set sh = CreateObject("WScript.Shell")\r\n'
+            f'sh.Run "cmd.exe /c ""{bat}""", 0, False\r\n'
+        )
+
+    # Intento 1: Programador de tareas via wscript (sin ventana)
     try:
-        cmd = f'cmd.exe /c "{bat}"'
         r = subprocess.run(
             ["schtasks", "/create", "/tn", f"MirAgente_{cliente_id}",
-             "/tr", cmd, "/sc", "onlogon", "/rl", "limited", "/f"],
+             "/tr", f'wscript.exe "{vbs}"', "/sc", "onlogon", "/rl", "limited", "/f"],
             capture_output=True, text=True
         )
         if r.returncode == 0:
@@ -145,9 +156,8 @@ def configurar_autostart(cliente_id):
             os.environ.get("APPDATA", ""),
             "Microsoft", "Windows", "Start Menu", "Programs", "Startup"
         )
-        vbs = os.path.join(startup, f"MirAgente_{cliente_id}.vbs")
-        with open(vbs, "w", encoding="utf-8") as f:
-            # Usar cmd /c para manejar rutas con espacios correctamente
+        vbs_startup = os.path.join(startup, f"MirAgente_{cliente_id}.vbs")
+        with open(vbs_startup, "w", encoding="utf-8") as f:
             f.write(
                 f'Set sh = CreateObject("WScript.Shell")\r\n'
                 f'sh.Run "cmd.exe /c ""{bat}""", 0, False\r\n'
@@ -176,8 +186,6 @@ class Instalador:
         # Variables de formulario
         self.v_nombre    = tk.StringVar()
         self.v_id        = tk.StringVar()
-        self.v_email     = tk.StringVar()   # email Firebase del cliente
-        self.v_contrasena= tk.StringVar()   # contraseña Firebase del cliente
         self.v_cam_nom   = tk.StringVar()
         self.v_cam_marca = tk.StringVar(value="hikvision")
         self.v_cam_ip    = tk.StringVar()
@@ -312,12 +320,6 @@ class Instalador:
                 return False
             if not self.v_id.get().strip():
                 messagebox.showwarning("Dato requerido", "El ID del cliente no puede estar vacío.")
-                return False
-            if not self.v_email.get().strip():
-                messagebox.showwarning("Dato requerido", "Ingresá el email Firebase del cliente.")
-                return False
-            if not self.v_contrasena.get().strip():
-                messagebox.showwarning("Dato requerido", "Ingresá la contraseña Firebase del cliente.")
                 return False
         return True
 
@@ -479,18 +481,6 @@ class Instalador:
                  relief="solid", bd=1, fg=C_HEADER).pack(fill="x", ipady=5)
         tk.Label(f, text="Solo letras minúsculas, números y guiones bajos.",
                  font=(FNT, 8), fg=C_GRAY, bg=C_BG).pack(anchor="w")
-
-        tk.Frame(f, bg=C_BORDER, height=1).pack(fill="x", pady=10)
-
-        tk.Label(f, text="Credenciales Firebase del cliente", font=(FNT, 10, "bold"),
-                 fg=C_TEXT, bg=C_BG).pack(anchor="w")
-        tk.Label(f, text="Creá el usuario desde el panel admin. "
-                         "Email sugerido: ID@clientes.mir.internal",
-                 font=(FNT, 8), fg=C_GRAY, bg=C_BG, wraplength=540,
-                 justify="left").pack(anchor="w", pady=(2,6))
-
-        campo(f, "Email Firebase *", self.v_email, "ej: clientedemo@mir-soluciones.app")
-        campo(f, "Contraseña Firebase *", self.v_contrasena, show="•")
 
     # ── Página 4: Cámaras / NVR ───────────────────────────────────────────────
     def _pg_camaras(self):
@@ -666,8 +656,6 @@ class Instalador:
             "cliente_id":        self.v_id.get(),
             "firebase_url":      FIREBASE_URL,
             "firebase_api_key":  FIREBASE_API_KEY,
-            "cliente_email":     self.v_email.get().strip(),
-            "cliente_contrasena":self.v_contrasena.get(),
             "intervalo_seg":     60,
             "intervalo_escaneo": 300
         }
@@ -684,15 +672,14 @@ class Instalador:
         self._log_write(f"  mir_camaras.json guardado ({len(cams)} equipo(s)) ✓")
         self._set_prog(paso_val * 3)
 
-        # 4. Test Firebase con credenciales del cliente
-        self._log_write("▶ Verificando credenciales Firebase...")
+        # 4. Test Firebase con credenciales del agente compartido
+        self._log_write("▶ Verificando conexión a Firebase...")
         ok_fb, err_fb = test_firebase(
-            self.v_id.get(), self.v_email.get().strip(), self.v_contrasena.get())
+            self.v_id.get(), AGENTE_EMAIL, AGENTE_CONTRASENA)
         if ok_fb:
             self._log_write("  Conexión a Firebase: OK ✓")
         else:
             self._log_write(f"  Firebase: advertencia — {err_fb[:80]}")
-            self._log_write("  Verificá que el usuario existe en Firebase Auth.")
             self._log_write("  (El agente reintentará automáticamente al iniciar)")
         self._set_prog(paso_val * 4)
 
