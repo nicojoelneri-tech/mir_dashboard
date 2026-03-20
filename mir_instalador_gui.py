@@ -20,9 +20,11 @@ DASHBOARD_URL    = "https://mir-soluciones-35859.web.app"
 AGENTE_EMAIL     = "agente@mir-soluciones.internal"
 AGENTE_CONTRASENA= "4e7cee98cf"
 DIR              = os.path.dirname(os.path.abspath(__file__))
-AGENT_FILE       = os.path.join(DIR, "mir_agente_test.py")
+AGENT_FILE       = os.path.join(DIR, "mir_agente.py")
 CONFIG_FILE      = os.path.join(DIR, "mir_config.json")
 CAMARAS_FILE     = os.path.join(DIR, "mir_camaras.json")
+DESINT_FILE      = os.path.join(DIR, "mir_desinstalador.bat")
+INSTALL_DIR      = r"C:\Program Files\Mir Soluciones"
 
 # ── Paleta ────────────────────────────────────────────────────────────────────
 C_HEADER  = "#1a2a4a"
@@ -104,32 +106,73 @@ def test_firebase(cliente_id, email, contrasena):
     except Exception as e:
         return False, str(e)
 
-def test_camara(cfg):
+def fetch_clientes(email, contrasena):
+    """Obtiene la lista de clientes desde Firebase /usuarios/. Retorna (lista, error)."""
     try:
         import urllib.request
+        url  = (f"https://identitytoolkit.googleapis.com/v1/"
+                f"accounts:signInWithPassword?key={FIREBASE_API_KEY}")
+        body = json.dumps({"email": email, "password": contrasena,
+                           "returnSecureToken": True}).encode()
+        req  = urllib.request.Request(url, data=body,
+                    headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            token = json.loads(resp.read().decode())["idToken"]
+        url2 = f"{FIREBASE_URL}/usuarios.json?auth={token}"
+        with urllib.request.urlopen(url2, timeout=10) as resp2:
+            data = json.loads(resp2.read().decode()) or {}
+        clientes = []
+        for uid, info in data.items():
+            nombre     = info.get("nombre", "")
+            cliente_id = info.get("cliente_id", "")
+            if cliente_id:
+                clientes.append({"nombre": nombre, "cliente_id": cliente_id})
+        clientes.sort(key=lambda x: x["nombre"].lower())
+        return clientes, ""
+    except Exception as e:
+        return [], str(e)
+
+def test_camara(cfg):
+    try:
         ip, puerto = cfg["ip"], cfg.get("puerto", 80)
-        import base64
-        cred = base64.b64encode(f"{cfg['usuario']}:{cfg['password']}".encode()).decode()
-        if cfg.get("marca", "hikvision") == "dahua":
+        marca = cfg.get("marca", "hikvision").lower()
+        if marca in ("dahua", "intelbras"):
             url = f"http://{ip}:{puerto}/cgi-bin/magicBox.cgi?action=getSystemInfo"
         else:
             url = f"http://{ip}:{puerto}/ISAPI/System/deviceInfo"
-        req = urllib.request.Request(url, headers={"Authorization": f"Basic {cred}"})
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return resp.status == 200, ""
+        try:
+            import requests
+            from requests.auth import HTTPDigestAuth
+            r = requests.get(url, auth=HTTPDigestAuth(cfg["usuario"], cfg["password"]),
+                             timeout=(3.05, 10))
+            if r.status_code == 200:
+                return True, ""
+            elif r.status_code == 401:
+                return False, "Credenciales incorrectas (401)"
+            else:
+                return False, f"Error HTTP {r.status_code}"
+        except ImportError:
+            import urllib.request, base64
+            cred = base64.b64encode(f"{cfg['usuario']}:{cfg['password']}".encode()).decode()
+            req = urllib.request.Request(url, headers={"Authorization": f"Basic {cred}"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return resp.status == 200, ""
     except Exception as e:
         return False, str(e)
 
-def configurar_autostart(cliente_id):
+def configurar_autostart(cliente_id, install_dir=None):
+    if install_dir is None:
+        install_dir = DIR
+    agent_file = os.path.join(install_dir, "mir_agente.py")
     pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
     if not os.path.exists(pythonw):
         pythonw = sys.executable
-    bat = os.path.join(DIR, "mir_inicio.bat")
-    vbs = os.path.join(DIR, "mir_inicio.vbs")
+    bat = os.path.join(install_dir, "mir_inicio.bat")
+    vbs = os.path.join(install_dir, "mir_inicio.vbs")
 
     # Bat que lanza pythonw (sin ventana de consola)
     with open(bat, "w", encoding="utf-8") as f:
-        f.write(f'@echo off\r\ncd /d "{DIR}"\r\nset PYTHONIOENCODING=utf-8\r\n"{pythonw}" "{AGENT_FILE}"\r\n')
+        f.write(f'@echo off\r\ncd /d "{install_dir}"\r\nset PYTHONIOENCODING=utf-8\r\n"{pythonw}" "{agent_file}"\r\n')
 
     # VBS que lanza el bat completamente invisible (sin ventana CMD)
     with open(vbs, "w", encoding="utf-8") as f:
@@ -184,7 +227,6 @@ class Instalador:
         self._logo_img = _cargar_logo(self.root, max_w=160, max_h=64)
 
         # Variables de formulario
-        self.v_nombre    = tk.StringVar()
         self.v_id        = tk.StringVar()
         self.v_cam_nom   = tk.StringVar()
         self.v_cam_marca = tk.StringVar(value="hikvision")
@@ -194,8 +236,6 @@ class Instalador:
         self.v_cam_port  = tk.StringVar(value="80")
         self.v_tiene_cam = tk.BooleanVar(value=False)
         self.v_autostart = tk.BooleanVar(value=True)
-
-        self.v_nombre.trace_add("write", self._update_id)
 
         self._build_ui()
         self._show_page(0)
@@ -217,9 +257,23 @@ class Instalador:
         # Separador
         tk.Frame(self.root, bg=C_BORDER, height=1).pack(fill="x")
 
-        # Área de contenido
-        self.content = tk.Frame(self.root, bg=C_BG)
-        self.content.pack(fill="both", expand=True, padx=0, pady=0)
+        # Área de contenido con scroll vertical
+        content_outer = tk.Frame(self.root, bg=C_BG)
+        content_outer.pack(fill="both", expand=True)
+
+        self._canvas = tk.Canvas(content_outer, bg=C_BG, highlightthickness=0, bd=0)
+        self._scrollbar = tk.Scrollbar(content_outer, orient="vertical",
+                                        command=self._canvas.yview)
+        self._canvas.configure(yscrollcommand=self._scrollbar.set)
+        self._canvas.pack(side="left", fill="both", expand=True)
+        # scrollbar se empaqueta solo cuando hace falta
+
+        self.content = tk.Frame(self._canvas, bg=C_BG)
+        self._cw = self._canvas.create_window((0, 0), window=self.content, anchor="nw")
+
+        self.content.bind("<Configure>", self._on_content_resize)
+        self._canvas.bind("<Configure>", self._on_canvas_resize)
+        self._canvas.bind_all("<MouseWheel>", self._on_mousewheel)
 
         # Separador inferior
         tk.Frame(self.root, bg=C_BORDER, height=1).pack(fill="x")
@@ -277,6 +331,7 @@ class Instalador:
         self.current = idx
         for w in self.content.winfo_children():
             w.destroy()
+        self._canvas.yview_moveto(0)
         self._draw_steps()
         self.lbl_step_title.config(text=STEPS[idx])
         self.btn_back.config(state="normal" if idx > 0 else "disabled")
@@ -304,8 +359,21 @@ class Instalador:
         if messagebox.askyesno("Cancelar", "¿Cancelar la instalación?"):
             self.root.destroy()
 
-    def _update_id(self, *_):
-        self.v_id.set(slugify(self.v_nombre.get()))
+    # ── Scroll helpers ────────────────────────────────────────────────────────
+    def _on_content_resize(self, event):
+        self._canvas.configure(scrollregion=self._canvas.bbox("all"))
+        # mostrar scrollbar solo si el contenido excede el área visible
+        if self.content.winfo_reqheight() > self._canvas.winfo_height():
+            self._scrollbar.pack(side="right", fill="y")
+        else:
+            self._scrollbar.pack_forget()
+
+    def _on_canvas_resize(self, event):
+        self._canvas.itemconfig(self._cw, width=event.width)
+
+    def _on_mousewheel(self, event):
+        if self.content.winfo_reqheight() > self._canvas.winfo_height():
+            self._canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     # ── Validaciones por página ───────────────────────────────────────────────
     def _validar(self, page):
@@ -315,11 +383,8 @@ class Instalador:
                     "Hacé click en 'Verificar e instalar' antes de continuar.")
                 return False
         if page == 2:  # Cliente
-            if not self.v_nombre.get().strip():
-                messagebox.showwarning("Dato requerido", "Ingresá el nombre del cliente.")
-                return False
             if not self.v_id.get().strip():
-                messagebox.showwarning("Dato requerido", "El ID del cliente no puede estar vacío.")
+                messagebox.showwarning("Dato requerido", "Ingresá el ID del cliente.")
                 return False
         return True
 
@@ -360,8 +425,9 @@ class Instalador:
         items = [
             ("python",    "Python " + sys.version.split()[0]),
             ("internet",  "Conexión a internet"),
-            ("agente",    "Archivo mir_agente_test.py"),
+            ("agente",    "Archivo mir_agente.py"),
             ("speedtest", "Speedtest CLI"),
+            ("psutil",    "Monitor de hardware (psutil)"),
         ]
         self._req_labels = {}
         for key, label in items:
@@ -415,7 +481,7 @@ class Instalador:
                 "✗ Sin conexión — verificá el cable/WiFi"))
             todo_ok = False
 
-        # mir_agente_test.py
+        # mir_agente.py
         agente_ok = os.path.exists(AGENT_FILE)
         self.root.after(0, lambda: self._set_req("agente", agente_ok,
             "✓ Encontrado" if agente_ok else "✗ No encontrado — copialo a esta carpeta"))
@@ -433,6 +499,17 @@ class Instalador:
             if not ok_s:
                 todo_ok = False
 
+        # psutil (hardware monitoring)
+        if pkg_instalado("psutil"):
+            self.root.after(0, lambda: self._set_req("psutil", True, "✓ Instalado"))
+        else:
+            self.root.after(0, lambda: self._set_req("psutil", None, "⟳ Instalando..."))
+            ok_p = instalar_pkg("psutil", lambda m: None)
+            self.root.after(0, lambda ok=ok_p: self._set_req(
+                "psutil", ok, "✓ Instalado" if ok else "✗ Error al instalar"))
+            if not ok_p:
+                todo_ok = False
+
         if todo_ok:
             self._req_ok = True
             self.root.after(0, lambda: self.btn_next.config(state="normal"))
@@ -445,42 +522,75 @@ class Instalador:
 
     # ── Página 3: Datos del cliente ───────────────────────────────────────────
     def _pg_cliente(self):
+        self._clientes_map = {}  # display label → cliente_id
+
         f = tk.Frame(self.content, bg=C_BG, padx=32, pady=16)
         f.pack(fill="both", expand=True)
-        tk.Label(f, text="Datos del cliente", font=(FNT, 12, "bold"),
+        tk.Label(f, text="Seleccionar cliente", font=(FNT, 12, "bold"),
                  fg=C_TEXT, bg=C_BG).pack(anchor="w")
-        tk.Label(f, text="Completá el nombre del cliente. El ID se genera automáticamente.",
-                 font=(FNT, 9), fg=C_GRAY, bg=C_BG).pack(anchor="w", pady=(2,16))
+        tk.Label(f, text="Elegí el cliente desde la lista registrada en el panel de administración.",
+                 font=(FNT, 9), fg=C_GRAY, bg=C_BG).pack(anchor="w", pady=(2,12))
 
-        def campo(parent, label, var, placeholder="", show=""):
-            tk.Label(parent, text=label, font=(FNT, 9, "bold"),
-                     fg=C_TEXT, bg=C_BG).pack(anchor="w", pady=(8,2))
-            e = tk.Entry(parent, textvariable=var, font=(FNT, 10),
-                         relief="solid", bd=1, show=show)
-            e.pack(fill="x", ipady=5)
-            if placeholder and not var.get():
-                e.insert(0, placeholder)
-                e.config(fg=C_GRAY)
-                def on_focus_in(ev):
-                    if e.get() == placeholder:
-                        e.delete(0, "end")
-                        e.config(fg=C_TEXT)
-                def on_focus_out(ev):
-                    if not e.get():
-                        e.insert(0, placeholder)
-                        e.config(fg=C_GRAY)
-                e.bind("<FocusIn>", on_focus_in)
-                e.bind("<FocusOut>", on_focus_out)
-            return e
+        tk.Label(f, text="Cliente *", font=(FNT, 9, "bold"),
+                 fg=C_TEXT, bg=C_BG).pack(anchor="w", pady=(0,2))
 
-        campo(f, "Nombre del cliente *", self.v_nombre, "ej: Distribuidora López")
+        self._v_combo = tk.StringVar()
+        self._combo = ttk.Combobox(f, textvariable=self._v_combo,
+                                    font=(FNT, 10), state="readonly")
+        self._combo.pack(fill="x", ipady=4)
+        self._combo.bind("<<ComboboxSelected>>", self._on_cliente_seleccionado)
 
-        tk.Label(f, text="ID del cliente (se usa en Firebase) *", font=(FNT, 9, "bold"),
-                 fg=C_TEXT, bg=C_BG).pack(anchor="w", pady=(10,2))
-        tk.Entry(f, textvariable=self.v_id, font=(FNT, 10, "bold"),
-                 relief="solid", bd=1, fg=C_HEADER).pack(fill="x", ipady=5)
-        tk.Label(f, text="Solo letras minúsculas, números y guiones bajos.",
-                 font=(FNT, 8), fg=C_GRAY, bg=C_BG).pack(anchor="w")
+        self._lbl_cliente_st = tk.Label(f, text="Cargando lista...",
+                                         font=(FNT, 9), fg=C_GRAY, bg=C_BG)
+        self._lbl_cliente_st.pack(anchor="w", pady=(4,0))
+
+        tk.Label(f, text="ID asignado:", font=(FNT, 9, "bold"),
+                 fg=C_TEXT, bg=C_BG).pack(anchor="w", pady=(16,2))
+        tk.Entry(f, textvariable=self.v_id, font=("Consolas", 10),
+                 relief="solid", bd=1, fg=C_HEADER,
+                 state="readonly").pack(fill="x", ipady=5)
+
+        btn_row = tk.Frame(f, bg=C_BG)
+        btn_row.pack(anchor="w", pady=(10,0))
+        tk.Button(btn_row, text="Recargar lista", font=(FNT, 9),
+                  fg=C_WHITE, bg="#374151", relief="flat", bd=0,
+                  padx=10, pady=4, cursor="hand2",
+                  command=self._cargar_clientes).pack(side="left")
+
+        # carga automática al entrar a la página
+        self.root.after(100, self._cargar_clientes)
+
+    def _cargar_clientes(self):
+        self._lbl_cliente_st.config(text="Cargando lista...", fg=C_GRAY)
+        self._combo.config(state="disabled")
+        def run():
+            clientes, err = fetch_clientes(AGENTE_EMAIL, AGENTE_CONTRASENA)
+            def update():
+                if err or not clientes:
+                    msg = f"Error al conectar: {err[:60]}" if err else "No hay clientes registrados."
+                    self._lbl_cliente_st.config(text=msg, fg=C_ROJO)
+                    self._combo.config(state="readonly")
+                    return
+                self._clientes_map = {
+                    f"{c['nombre']}  ({c['cliente_id']})": c["cliente_id"]
+                    for c in clientes
+                }
+                self._combo["values"] = list(self._clientes_map.keys())
+                self._combo.config(state="readonly")
+                self._lbl_cliente_st.config(
+                    text=f"{len(clientes)} cliente(s) encontrado(s).", fg=C_VERDE)
+                # si ya había uno seleccionado, mantenerlo
+                if self.v_id.get():
+                    for label, cid in self._clientes_map.items():
+                        if cid == self.v_id.get():
+                            self._v_combo.set(label)
+                            break
+            self.root.after(0, update)
+        threading.Thread(target=run, daemon=True).start()
+
+    def _on_cliente_seleccionado(self, event):
+        label = self._v_combo.get()
+        self.v_id.set(self._clientes_map.get(label, ""))
 
     # ── Página 4: Cámaras / NVR ───────────────────────────────────────────────
     def _pg_camaras(self):
@@ -528,10 +638,12 @@ class Instalador:
         ent(self.v_cam_nom)
         lbl("Marca")
         mb = ttk.Combobox(frm, textvariable=self.v_cam_marca,
-                           values=["hikvision", "dahua"], font=(FNT, 9), state="readonly")
+                           values=["hikvision", "dahua", "intelbras"], font=(FNT, 9), state="readonly")
         mb.grid(sticky="ew")
         lbl("IP del NVR/DVR")
         ent(self.v_cam_ip)
+        tk.Label(frm, text="⚠ Ingresar IP del NVR/DVR, no de cámaras individuales",
+                 font=(FNT, 8), fg="#e0a800", bg=C_BG).grid(sticky="w")
 
         cols = tk.Frame(frm, bg=C_BG)
         cols.grid(sticky="ew", pady=(6,0))
@@ -638,8 +750,25 @@ class Instalador:
         self.root.after(0, lambda: self._prog.config(value=val))
 
     def _run_install(self):
-        pasos = 6
+        import shutil
+        pasos = 8
         paso_val = 100 // pasos
+
+        # 0. Detener agente anterior si está corriendo
+        self._log_write("▶ Deteniendo agente anterior (si existe)...")
+        try:
+            r = subprocess.run(
+                ["taskkill", "/F", "/IM", "pythonw.exe"],
+                capture_output=True, text=True
+            )
+            if r.returncode == 0:
+                self._log_write("  Agente anterior detenido ✓")
+                import time; time.sleep(1)  # esperar que libere archivos
+            else:
+                self._log_write("  Sin agente previo en ejecución ✓")
+        except Exception as e:
+            self._log_write(f"  (No se pudo verificar proceso previo: {e})")
+        self._set_prog(paso_val)
 
         # 1. Dependencias
         self._log_write("▶ Verificando dependencias Python...")
@@ -650,7 +779,19 @@ class Instalador:
             self._log_write("  speedtest-cli: ya instalado ✓")
         self._set_prog(paso_val)
 
-        # 2. Guardar config
+        # 2. Crear directorio de instalación y copiar archivos
+        self._log_write(f"▶ Instalando en {INSTALL_DIR}...")
+        try:
+            os.makedirs(INSTALL_DIR, exist_ok=True)
+            shutil.copy2(AGENT_FILE, os.path.join(INSTALL_DIR, "mir_agente.py"))
+            if os.path.exists(DESINT_FILE):
+                shutil.copy2(DESINT_FILE, os.path.join(INSTALL_DIR, "mir_desinstalador.bat"))
+            self._log_write(f"  Archivos copiados a {INSTALL_DIR} ✓")
+        except Exception as e:
+            self._log_write(f"  Error al copiar archivos: {e}")
+        self._set_prog(paso_val * 2)
+
+        # 3. Guardar config
         self._log_write("▶ Guardando configuración del cliente...")
         cfg = {
             "cliente_id":        self.v_id.get(),
@@ -659,20 +800,20 @@ class Instalador:
             "intervalo_seg":     60,
             "intervalo_escaneo": 300
         }
-        with open(CONFIG_FILE, "w", encoding="utf-8") as fp:
+        with open(os.path.join(INSTALL_DIR, "mir_config.json"), "w", encoding="utf-8") as fp:
             json.dump(cfg, fp, indent=2, ensure_ascii=False)
         self._log_write("  mir_config.json guardado ✓")
-        self._set_prog(paso_val * 2)
-
-        # 3. Guardar cámaras
-        self._log_write("▶ Guardando configuración de cámaras...")
-        cams = self.camaras if self.v_tiene_cam.get() else []
-        with open(CAMARAS_FILE, "w", encoding="utf-8") as fp:
-            json.dump(cams, fp, indent=2, ensure_ascii=False)
-        self._log_write(f"  mir_camaras.json guardado ({len(cams)} equipo(s)) ✓")
         self._set_prog(paso_val * 3)
 
-        # 4. Test Firebase con credenciales del agente compartido
+        # 4. Guardar cámaras
+        self._log_write("▶ Guardando configuración de cámaras...")
+        cams = self.camaras if self.v_tiene_cam.get() else []
+        with open(os.path.join(INSTALL_DIR, "mir_camaras.json"), "w", encoding="utf-8") as fp:
+            json.dump(cams, fp, indent=2, ensure_ascii=False)
+        self._log_write(f"  mir_camaras.json guardado ({len(cams)} equipo(s)) ✓")
+        self._set_prog(paso_val * 4)
+
+        # 5. Test Firebase con credenciales del agente compartido
         self._log_write("▶ Verificando conexión a Firebase...")
         ok_fb, err_fb = test_firebase(
             self.v_id.get(), AGENTE_EMAIL, AGENTE_CONTRASENA)
@@ -681,14 +822,14 @@ class Instalador:
         else:
             self._log_write(f"  Firebase: advertencia — {err_fb[:80]}")
             self._log_write("  (El agente reintentará automáticamente al iniciar)")
-        self._set_prog(paso_val * 4)
+        self._set_prog(paso_val * 5)
 
-        # 5. Excluir de Windows Defender (reduce falsos positivos)
+        # 6. Excluir de Windows Defender (reduce falsos positivos)
         self._log_write("▶ Configurando exclusión en Windows Defender...")
         try:
             r = subprocess.run(
                 ["powershell", "-Command",
-                 f'Add-MpPreference -ExclusionPath "{DIR}"'],
+                 f'Add-MpPreference -ExclusionPath "{INSTALL_DIR}"'],
                 capture_output=True, text=True, timeout=20
             )
             if r.returncode == 0:
@@ -697,12 +838,12 @@ class Instalador:
                 self._log_write("  Defender: sin permisos de admin (no crítico)")
         except Exception:
             self._log_write("  Defender: omitido (no disponible en este sistema)")
-        self._set_prog(paso_val * 5)
+        self._set_prog(paso_val * 6)
 
-        # 6. Autostart
+        # 7. Autostart
         if self.v_autostart.get():
             self._log_write("▶ Configurando inicio automático...")
-            ok_at, metodo = configurar_autostart(self.v_id.get())
+            ok_at, metodo = configurar_autostart(self.v_id.get(), INSTALL_DIR)
             if ok_at:
                 self._log_write(f"  Inicio automático configurado: {metodo} ✓")
             else:
@@ -726,8 +867,8 @@ class Instalador:
                  fg=C_TEXT, bg=C_BG).pack()
         tk.Frame(f, bg=C_GOLD, height=2, width=160).pack(pady=10)
 
-        info = (f"  Cliente:    {self.v_nombre.get()}\n"
-                f"  ID:         {self.v_id.get()}\n"
+        info = (f"  ID:         {self.v_id.get()}\n"
+                f"  Instalado en: {INSTALL_DIR}\n"
                 f"  Cámaras:    {len(self.camaras)} equipo(s)\n"
                 f"  Autostart:  {'Sí' if self.v_autostart.get() else 'No'}")
         tk.Label(f, text=info, font=("Consolas", 9), fg=C_TEXT, bg=C_WHITE,
@@ -753,7 +894,8 @@ class Instalador:
                 pythonw = sys.executable
             env = os.environ.copy()
             env["PYTHONIOENCODING"] = "utf-8"
-            subprocess.Popen([pythonw, AGENT_FILE], cwd=DIR, env=env)
+            agent_installed = os.path.join(INSTALL_DIR, "mir_agente.py")
+            subprocess.Popen([pythonw, agent_installed], cwd=INSTALL_DIR, env=env)
             messagebox.showinfo("Agente iniciado",
                 "El agente de monitoreo está corriendo en segundo plano.\n"
                 "Los datos comenzarán a aparecer en el dashboard en ~60 segundos.")

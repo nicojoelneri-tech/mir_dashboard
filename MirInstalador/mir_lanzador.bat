@@ -2,6 +2,14 @@
 setlocal enabledelayedexpansion
 title Mir Soluciones - Instalador
 
+:: Verificar privilegios de administrador
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+    echo  [..] Solicitando permisos de administrador...
+    powershell -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    exit /b
+)
+
 echo.
 echo  ===================================================
 echo   M.I.R. Soluciones - Instalador de agente

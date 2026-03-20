@@ -1,0 +1,14 @@
+PENDIENTES
+
+--- DE NICOLÁS ---
+- Agregar datos de hardware al dashboard cliente: modelo del micro y demás componentes.
+- Obtener más información de dispositivos conectados a la red (actualmente solo la mitad aparece con nombre).
+- Notificaciones automáticas a Mauro ante alertas críticas.
+- Seguridad del proyecto.
+- Agregar al dashboard admin la opción de borrar clientes.
+
+--- DE CLAUDE ---
+- Testing en PC limpia (sin Python instalado): validar auto-descarga y flujo completo del instalador antes de Indie Café.
+- Validar código de cámaras contra DVR/NVR real de hardware (mock pasó, falta hardware real).
+- UX modal reset contraseña: si el usuario no tiene campo "pass" en Firebase, mostrar instrucción manual en lugar de error genérico.
+- Shelly PM Mini: monitoreo eléctrico (~$15 USD, WiFi, API local HTTP). Hardware a comprar, integración futura.

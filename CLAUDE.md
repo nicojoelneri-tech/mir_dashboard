@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```
 Cliente (agente Python)
-  └── mir_agente_test.py
+  └── mir_agente.py
         ├── ping → gateway, 8.8.8.8, 1.1.1.1
         ├── speedtest (cada 10 min, cacheado en mir_ultima_velocidad.json)
         ├── ARP scan (cada 5 min) → detecta dispositivos nuevos en la red
@@ -35,7 +35,7 @@ Firebase Hosting → public/
 
 ```bash
 # Correr el agente localmente (requiere mir-clave.json y dependencias)
-python mir_agente_test.py
+python mir_agente.py
 
 # Deploy del dashboard a Firebase Hosting
 firebase deploy --only hosting
@@ -58,7 +58,7 @@ El agente las instala automáticamente si faltan (auto-pip dentro del script).
 
 | Archivo | Rol |
 |---|---|
-| `mir_agente_test.py` | Agente principal — loop de monitoreo |
+| `mir_agente.py` | Agente principal — loop de monitoreo |
 | `mir-clave.json` | Service account de Firebase (**nunca commitear**) |
 | `mir_ultima_velocidad.json` | Cache local del último speedtest |
 | `mir_dispositivos_conocidos.json` | Historial de MACs detectadas (persiste entre reinicios) |
@@ -69,7 +69,7 @@ El agente las instala automáticamente si faltan (auto-pip dentro del script).
 
 ## Configuración del agente
 
-En `mir_agente_test.py`, las constantes al inicio:
+En `mir_agente.py`, las constantes al inicio:
 
 ```python
 CLIENTE_ID        = "clientedemo"   # ID único por cliente
