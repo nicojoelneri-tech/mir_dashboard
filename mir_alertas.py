@@ -239,6 +239,29 @@ def loop_monitoreo():
     if cargar_config_telegram():
         log(f"Telegram configurado — chat_id: {_tg_chat_id} ✓")
         telegram_send("🟢 <b>Mir Alertas iniciado</b>\nMonitoreando todos los clientes.")
+
+        # Resumen de estado inicial
+        clientes_iniciales = firebase_get("clientes")
+        if clientes_iniciales:
+            offline, sin_inet = [], []
+            for cid, datos in clientes_iniciales.items():
+                rep    = (datos or {}).get("ultimo_reporte") or {}
+                red    = rep.get("red") or {}
+                mins   = minutos_desde(parsear_ts(rep.get("ts")))
+                nombre = cid.replace("_", " ").title()
+                if mins >= MINUTOS_OFFLINE:
+                    offline.append(f"• {nombre} (hace {mins:.0f} min)")
+                elif not red.get("internet_online", True):
+                    sin_inet.append(f"• {nombre}")
+            if offline or sin_inet:
+                msg = "📋 <b>Estado al iniciar:</b>"
+                if offline:
+                    msg += "\n\n🔴 Sin conexión:\n" + "\n".join(offline)
+                if sin_inet:
+                    msg += "\n\n🟡 Sin internet:\n" + "\n".join(sin_inet)
+                telegram_send(msg)
+            else:
+                telegram_send("✅ Todos los clientes online al iniciar.")
     else:
         log("[!] Telegram no configurado en Firebase. Configuralo desde el admin panel.")
 

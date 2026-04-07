@@ -619,10 +619,10 @@
       </div>
     </div>
   </div>
-</div>
+  </div>
 
-<!-- SECCIÓN: CONFIGURACIÓN -->
-<div id="content-config" class="content-section">
+  <!-- SECCIÓN: CONFIGURACIÓN -->
+  <div id="content-config" class="content-section">
   <div class="section-header">
     <div class="section-title">Configuración</div>
   </div>
@@ -650,6 +650,7 @@
     </div>
     <div id="tg-status" style="font-size:12px;min-height:18px;margin-top:10px"></div>
   </div>
+</div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -1574,7 +1575,6 @@ async function ncCrearCliente() {
     status.textContent = `Ya existe un cliente con el ID "${id}". Usá otro ID.`;
     status.className = 'nc-status err';
     return;
-  }
   }
 
   btn.disabled = true;
