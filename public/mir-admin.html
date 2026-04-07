@@ -110,6 +110,8 @@
   .td-mono { font-family: 'DM Mono', monospace; font-size: 11px; }
   .td-link { color: #6b9fff; cursor: pointer; font-size: 11px; }
   .td-link:hover { text-decoration: underline; }
+  .btn-trash { background: none; border: none; cursor: pointer; font-size: 14px; opacity: 0.4; padding: 2px 4px; border-radius: 4px; transition: opacity .15s; }
+  .btn-trash:hover { opacity: 1; background: rgba(255,80,80,.12); }
   .table-empty { padding: 30px; text-align: center; font-size: 12px; color: var(--text3); }
 
   /* ALERTAS GLOBALES */
@@ -165,18 +167,61 @@
   .login-error{font-size:12px;color:var(--red);margin-top:10px;text-align:center;min-height:18px;}
   .login-only-admin{font-size:11px;color:var(--text3);text-align:center;margin-top:14px;}
 
+  /* MOBILE NAV */
+  .mobile-nav-btn{display:none;}
+  .mobile-nav-overlay{display:none;position:fixed;inset:0;z-index:150;background:var(--sidebar-bg);flex-direction:column;padding:20px 16px;}
+  .mobile-nav-overlay.open{display:flex;}
+  .mobile-nav-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border);}
+  .mobile-nav-title{font-size:14px;font-weight:600;color:var(--text);}
+  .mobile-nav-close{background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;}
+  .mobile-nav-item{display:flex;align-items:center;gap:10px;padding:14px 16px;font-size:14px;color:var(--text2);cursor:pointer;border-radius:10px;margin-bottom:4px;border:1px solid transparent;}
+  .mobile-nav-item:hover,.mobile-nav-item.active{background:rgba(26,58,110,0.25);color:#6b9fff;border-color:rgba(34,85,164,0.3);}
+  .mobile-nav-item svg{opacity:0.7;flex-shrink:0;}
+
   @media(max-width:768px){
-    body{flex-direction:column;}
-    .sidebar{width:100%;min-width:unset;border-right:none;border-bottom:2px solid rgba(176,184,204,0.18);flex-direction:row;align-items:center;padding:12px 16px;gap:12px;}
+    body{flex-direction:column;height:100dvh;overflow:hidden;}
+    .sidebar{width:100%;min-width:unset;border-right:none;border-bottom:2px solid rgba(176,184,204,0.18);flex-direction:row;align-items:center;padding:12px 16px;gap:12px;flex-shrink:0;overflow:hidden;max-height:70px;transition:max-height 0.28s ease,padding 0.28s ease,border-bottom-width 0.28s ease;}
+    .sidebar.header-hidden{max-height:0;padding-top:0;padding-bottom:0;border-bottom-width:0;}
     .logo{padding:0;border-bottom:none;}
     .nav-section,.nav-item,.admin-badge{display:none;}
     .sidebar-footer{margin-top:0;border-top:none;padding:0;margin-left:auto;}
     .client-label{display:none;}
     .logout-btn{margin-top:0 !important;}
+    .mobile-nav-btn{display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:7px 12px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap;}
+    .content-section.active{overscroll-behavior-y:none;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 160px);}
+    html,body{overscroll-behavior:none;}
     .metric-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
     .clients-grid{grid-template-columns:1fr;}
     .content{padding:14px;}
     .topbar{padding:10px 14px;}
+    /* Alertas: filtros debajo del título */
+    #content-alertas .section-header{flex-direction:column;align-items:flex-start;gap:10px;}
+    /* Clientes: ocultar columnas menos críticas */
+    #content-clientes .data-table th:nth-child(3),
+    #content-clientes .data-table td:nth-child(3),
+    #content-clientes .data-table th:nth-child(4),
+    #content-clientes .data-table td:nth-child(4),
+    #content-clientes .data-table th:nth-child(5),
+    #content-clientes .data-table td:nth-child(5),
+    #content-clientes .data-table th:nth-child(7),
+    #content-clientes .data-table td:nth-child(7),
+    #content-clientes .data-table th:nth-child(8),
+    #content-clientes .data-table td:nth-child(8){display:none;}
+    #content-clientes .data-table{font-size:11px;}
+    #content-clientes .data-table th,
+    #content-clientes .data-table td{padding:9px 8px;}
+    /* Usuarios: email y acciones adaptadas */
+    /* Usuarios: cards en mobile */
+    #content-usuarios .table-wrap{background:transparent;border:none;border-radius:0;overflow:visible;}
+    #content-usuarios .data-table,
+    #content-usuarios .data-table tbody,
+    #content-usuarios .data-table tr{display:block;}
+    #content-usuarios .data-table thead{display:none;}
+    #content-usuarios .data-table tr{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;}
+    #content-usuarios .data-table td{display:block;padding:3px 0;border:none;font-size:12px;}
+    #content-usuarios .data-table td:last-child{margin-top:10px;display:flex;flex-direction:column;gap:8px;}
+    /* Modales responsive */
+    .reset-modal{width:calc(100vw - 32px);max-width:340px;padding:22px 20px;}
   }
 
   /* ── Nuevo cliente ── */
@@ -212,6 +257,36 @@
   .rules-hint{font-size:11px;color:var(--text3);line-height:1.6;margin-top:8px;}
   .rules-hint a{color:var(--blue);text-decoration:none;}
   .rules-hint a:hover{text-decoration:underline;}
+
+  /* ── PANEL DETALLE CLIENTE ── */
+  .det-overlay{position:fixed;inset:0;z-index:250;background:rgba(0,0,0,0.55);display:none;}
+  .det-overlay.open{display:flex;justify-content:flex-end;}
+  .det-panel{width:520px;max-width:100%;background:var(--bg);height:100%;display:flex;flex-direction:column;border-left:1px solid var(--border2);}
+  .det-panel-anim{animation:detSlide 0.22s ease;}
+  @keyframes detSlide{from{transform:translateX(100%)}to{transform:translateX(0)}}
+  .det-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;flex-shrink:0;background:var(--bg2);}
+  .det-title{font-size:14px;font-weight:600;font-family:'DM Mono',monospace;}
+  .det-header-right{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+  .det-close{background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:5px 11px;cursor:pointer;font-size:12px;font-family:'DM Sans',sans-serif;}
+  .det-dash-btn{background:rgba(34,85,164,0.2);border:1px solid rgba(34,85,164,0.4);color:#6b9fff;border-radius:8px;padding:5px 11px;cursor:pointer;font-size:12px;font-family:'DM Sans',sans-serif;}
+  .det-body{flex:1;overflow-y:auto;padding:18px 20px;overscroll-behavior-y:none;}
+  .det-sec{margin-bottom:20px;}
+  .det-sec-title{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);}
+  .det-row{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:4px 0;font-size:12px;}
+  .det-lbl{color:var(--text3);flex-shrink:0;}
+  .det-val{color:var(--text);text-align:right;word-break:break-word;}
+  .det-sub{font-size:10px;color:var(--text3);}
+  .det-bar{height:4px;background:var(--bg3);border-radius:2px;overflow:hidden;margin:2px 0 7px;}
+  .det-bar-fill{height:100%;border-radius:2px;}
+  .det-nvr{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;}
+  .det-nvr-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .det-nvr-name{font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px;}
+  .det-nvr-stat{font-size:11px;color:var(--text3);}
+  .det-cam-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:10px;}
+  .det-cam{background:var(--bg3);border-radius:7px;padding:7px 10px;font-size:11px;}
+  .det-cam-name{color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .det-cam-status{font-size:10px;margin-top:2px;}
+  @media(max-width:768px){.det-panel{width:100%;}}
 </style>
 </head>
 <body>
@@ -262,10 +337,61 @@
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="5" r="2.5"/><path d="M1 13c0-2.8 2.2-5 5-5s5 2.2 5 5"/><line x1="13" y1="3" x2="13" y2="9"/><line x1="10" y1="6" x2="16" y2="6"/></svg>
     Nuevo cliente
   </div>
+  <div class="nav-item" onclick="mostrarSeccion('config')">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41"/></svg>
+    Configuración
+  </div>
+  <button class="mobile-nav-btn" onclick="toggleMobileNav()">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="14" y2="8"/><line x1="2" y1="12" x2="14" y2="12"/></svg>
+    Menú
+  </button>
   <div class="sidebar-footer">
     <div class="client-label">sesión admin</div>
     <div class="client-name" id="sidebar-email">—</div>
     <button class="logout-btn" onclick="doLogout()">Cerrar sesión</button>
+  </div>
+</div>
+
+<div class="mobile-nav-overlay" id="mobile-nav-overlay">
+  <div class="mobile-nav-header">
+    <span class="mobile-nav-title">Panel Mir</span>
+    <button class="mobile-nav-close" onclick="toggleMobileNav()">✕ Cerrar</button>
+  </div>
+  <div class="mobile-nav-item" onclick="mostrarSeccion('overview')">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+    Todos los clientes
+  </div>
+  <div class="mobile-nav-item" onclick="mostrarSeccion('alertas')">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3M8 11v.5"/></svg>
+    Alertas globales
+  </div>
+  <div class="mobile-nav-item" onclick="mostrarSeccion('clientes')">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="5" r="2.5"/><path d="M1 13c0-2.8 2.2-5 5-5s5 2.2 5 5"/><circle cx="13" cy="6" r="2"/><path d="M11 13c0-1.9 1.1-3.5 3-4"/></svg>
+    Clientes
+  </div>
+  <div class="mobile-nav-item" onclick="mostrarSeccion('usuarios')">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="2.5"/><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6"/></svg>
+    Usuarios
+  </div>
+  <div class="mobile-nav-item" onclick="mostrarSeccion('nuevo-cliente')">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="5" r="2.5"/><path d="M1 13c0-2.8 2.2-5 5-5s5 2.2 5 5"/><line x1="13" y1="3" x2="13" y2="9"/><line x1="10" y1="6" x2="16" y2="6"/></svg>
+    Nuevo cliente
+  </div>
+</div>
+
+<!-- PANEL DETALLE CLIENTE -->
+<div class="det-overlay" id="det-overlay" onclick="if(event.target===this)cerrarDetalle()">
+  <div class="det-panel det-panel-anim" id="det-panel">
+    <div class="det-header">
+      <div>
+        <div class="det-title" id="det-title">—</div>
+        <div class="det-sub" id="det-status-sub" style="margin-top:4px">—</div>
+      </div>
+      <div class="det-header-right">
+        <button class="det-close" onclick="cerrarDetalle()">✕</button>
+      </div>
+    </div>
+    <div class="det-body" id="det-body"></div>
   </div>
 </div>
 
@@ -359,10 +485,11 @@
             <th>Agente</th>
             <th>Última sync</th>
             <th></th>
+            <th></th>
           </tr>
         </thead>
         <tbody id="clientes-tbody">
-          <tr><td colspan="10" class="table-empty">Cargando...</td></tr>
+          <tr><td colspan="11" class="table-empty">Cargando...</td></tr>
         </tbody>
       </table>
     </div>
@@ -373,9 +500,6 @@
     <div class="section-header">
       <div class="section-title">Usuarios registrados</div>
       <span id="usuarios-count" style="font-size:11px;color:var(--text3)"></span>
-    </div>
-    <div style="font-size:12px;color:var(--text3);margin-bottom:16px;line-height:1.6">
-      Podés enviar un email de restablecimiento a cualquier usuario. El cliente recibirá un link para elegir una nueva contraseña. No se muestran contraseñas en ningún momento.
     </div>
     <div class="table-wrap">
       <table class="data-table">
@@ -432,7 +556,7 @@
         <div class="nc-card">
           <div class="nc-card-title">Datos para el instalador</div>
           <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
-            Copiá estos datos y pegalos en el paso "Datos del cliente" del instalador.
+            Copiá el token y pegalo en el instalador. Expira en 72 horas.
           </div>
           <div class="result-box" id="nc-result-box" style="display:none">
             <div class="result-row">
@@ -463,6 +587,13 @@
                 <button class="btn-copy-sm" onclick="copiarCampo('res-pass')">copiar</button>
               </div>
             </div>
+            <div class="result-row" style="border-top:1px solid var(--border);margin-top:8px;padding-top:8px">
+              <span class="result-lbl" style="color:var(--gold)">Token instalador</span>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span class="result-val" id="res-token" style="font-size:10px;word-break:break-all">—</span>
+                <button class="btn-copy-sm" onclick="copiarCampo('res-token')">copiar</button>
+              </div>
+            </div>
             <button class="btn-copiar-todo" onclick="ncCopiarTodo()">
               📋 Copiar todo al portapapeles
             </button>
@@ -487,6 +618,37 @@
         </div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- SECCIÓN: CONFIGURACIÓN -->
+<div id="content-config" class="content-section">
+  <div class="section-header">
+    <div class="section-title">Configuración</div>
+  </div>
+
+  <!-- Telegram -->
+  <div class="nc-card" style="max-width:520px">
+    <div class="nc-card-title">Alertas por Telegram</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.6">
+      Configurá un bot de Telegram para recibir alertas cuando un cliente se desconecte, el DVR falle o un disco se llene.<br>
+      <span style="color:#6b9fff">¿Cómo crear el bot?</span> Abrí Telegram → buscá <b>@BotFather</b> → <code>/newbot</code> → copiá el token.
+    </div>
+
+    <label class="form-label">Token del bot</label>
+    <input id="tg-token" class="form-input" type="text" placeholder="123456789:AAEhBOwp..." style="font-family:monospace;font-size:12px">
+
+    <label class="form-label" style="margin-top:12px">Chat ID</label>
+    <input id="tg-chat-id" class="form-input" type="text" placeholder="Tu chat ID numérico" style="font-family:monospace;font-size:12px">
+    <div style="font-size:11px;color:var(--text3);margin-top:4px">
+      Para obtenerlo: enviá un mensaje al bot, luego abrí <code>https://api.telegram.org/bot{TOKEN}/getUpdates</code> y copiá el <code>chat.id</code>.
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+      <button class="btn-crear" style="padding:8px 20px;font-size:13px" onclick="tgGuardar()">Guardar</button>
+      <button class="btn-regen" style="padding:8px 16px" onclick="tgProbar()">Probar conexión</button>
+    </div>
+    <div id="tg-status" style="font-size:12px;min-height:18px;margin-top:10px"></div>
   </div>
 </div>
 
@@ -651,10 +813,10 @@ function renderClientes(data) {
     if (camCriticos > 0 && cardClass === '') cardClass = 'card-err';
     else if (camWarns > 0 && cardClass === '') cardClass = 'card-warn';
 
-    const bajada  = red.bajada_mbps  != null ? red.bajada_mbps  + ' Mbps' : '—';
-    const subida  = red.subida_mbps  != null ? red.subida_mbps  + ' Mbps' : '—';
-    const latencia = red.internet_latencia != null ? red.internet_latencia + ' ms' : '—';
-    const gateway  = red.gateway_ip || '—';
+    const bajada  = red.bajada_mbps  != null ? escapeHtml(red.bajada_mbps)  + ' Mbps' : '—';
+    const subida  = red.subida_mbps  != null ? escapeHtml(red.subida_mbps)  + ' Mbps' : '—';
+    const latencia = red.internet_latencia != null ? escapeHtml(red.internet_latencia) + ' ms' : '—';
+    const gateway  = escapeHtml(red.gateway_ip || '—');
     const ispInfo  = resolverIsp(red.isp);
     const ispHtml  = ispInfo
       ? `<a href="${ispInfo.url}" target="_blank" rel="noopener" style="color:#6b9fff;font-size:10px;text-decoration:none">${ispInfo.label} web →</a>`
@@ -699,13 +861,13 @@ function renderClientes(data) {
           const diskColor = !disco0 ? 'var(--green)' : disco0.usado_pct >= 90 ? 'var(--red)' : disco0.usado_pct >= 75 ? 'var(--yellow)' : 'var(--green)';
           return `<div class="card-cam-row">
             <span class="card-cam-name"><span class="dot" style="background:${nvrColor}"></span>${escapeHtml(nvr.nombre)}</span>
-            <span class="card-cam-meta">${nvr.canales_grabando}/${nvr.canales_activos} cam${disco0 ? ' · ' + disco0.usado_pct + '%' : ''}</span>
+            <span class="card-cam-meta">${escapeHtml(nvr.canales_activos)} con. · ${escapeHtml(nvr.canales_grabando)} grab.${disco0 ? ' · ' + escapeHtml(disco0.usado_pct) + '%' : ''}</span>
           </div>${disco0 ? `<div class="card-cam-disk"><div class="card-cam-fill" style="width:${disco0.usado_pct}%;background:${diskColor}"></div></div>` : ''}`;
         }).join('')}
       </div>` : ''}
       <div class="card-footer">
         <span class="card-sync">Sync ${hace} · ${ispHtml}</span>
-        <span class="card-link">ver detalle →</span>
+        <span class="card-link" onclick="verDetalleCliente('${escapeHtml(clienteId)}')">ver detalle →</span>
       </div>
     </div>`;
   });
@@ -742,6 +904,23 @@ function parsearFecha(tsStr) {
 // ── NAVEGACIÓN ──
 let _filtroAlertas = 'todas';
 
+function toggleMobileNav() {
+  document.getElementById('mobile-nav-overlay')?.classList.toggle('open');
+}
+
+// ── HEADER AUTO-HIDE EN SCROLL MOBILE ──
+(function() {
+  const sidebar = document.querySelector('.sidebar');
+  let lastY = 0;
+  function onScroll() {
+    const y = this.scrollTop;
+    if (y > lastY && y > 50) sidebar.classList.add('header-hidden');
+    else if (y < lastY - 10 || y <= 0) sidebar.classList.remove('header-hidden');
+    lastY = y;
+  }
+  document.querySelectorAll('.content-section').forEach(s => s.addEventListener('scroll', onScroll));
+})();
+
 function mostrarSeccion(seccion) {
   ['overview','alertas','clientes','usuarios','nuevo-cliente'].forEach(s => {
     const el = document.getElementById('content-' + s);
@@ -753,10 +932,14 @@ function mostrarSeccion(seccion) {
   if (target) target.classList.add('active');
   if (typeof event !== 'undefined' && event?.currentTarget) event.currentTarget.classList.add('active');
 
-  if (seccion === 'alertas')   renderAlertasGlobales(clientesData);
-  if (seccion === 'clientes')  renderTablaClientes(clientesData);
-  if (seccion === 'usuarios')  cargarUsuarios();
+  // Cerrar menú mobile si está abierto
+  document.getElementById('mobile-nav-overlay')?.classList.remove('open');
+
+  if (seccion === 'alertas')      renderAlertasGlobales(clientesData);
+  if (seccion === 'clientes')     renderTablaClientes(clientesData);
+  if (seccion === 'usuarios')     cargarUsuarios();
   if (seccion === 'nuevo-cliente') ncInicializar();
+  if (seccion === 'config')       tgCargar();
 }
 
 // ── CONTADOR DE ALERTAS ACTIVAS (misma lógica que renderAlertasGlobales) ──
@@ -923,7 +1106,7 @@ function renderTablaClientes(data) {
   if (count) count.textContent = `${keys.length} cliente(s)`;
 
   if (keys.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="10" class="table-empty">No hay clientes registrados.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" class="table-empty">No hay clientes registrados.</td></tr>';
     return;
   }
 
@@ -938,8 +1121,8 @@ function renderTablaClientes(data) {
     const statusColor = !online ? 'var(--red)' : !inetOk ? 'var(--red)' : 'var(--green)';
     const statusText  = !online ? 'sin datos' : !inetOk ? 'sin internet' : 'normal';
 
-    const bajada   = red.bajada_mbps  != null ? `${red.bajada_mbps} Mbps` : '—';
-    const latencia = red.internet_latencia != null ? `${red.internet_latencia} ms` : '—';
+    const bajada   = red.bajada_mbps  != null ? `${escapeHtml(red.bajada_mbps)} Mbps` : '—';
+    const latencia = red.internet_latencia != null ? `${escapeHtml(red.internet_latencia)} ms` : '—';
 
     // Cámaras
     let camText = '—', camColor = 'var(--text3)';
@@ -962,7 +1145,7 @@ function renderTablaClientes(data) {
       }
     }
 
-    const version = rep.agente_version || '—';
+    const version = escapeHtml(rep.agente_version || '—');
     const hace    = tiempoRelativo(ts);
 
     const rowIsp = resolverIsp(red.isp);
@@ -980,7 +1163,8 @@ function renderTablaClientes(data) {
       <td style="color:${discoColor};font-size:12px;font-weight:500">${discoText}</td>
       <td class="td-mono" style="color:var(--text3)">${version}</td>
       <td style="font-size:11px;color:var(--text3)">${hace}</td>
-      <td><span class="td-link" onclick="window.open('/?cliente=${encodeURIComponent(clienteId)}','_blank')">ver →</span></td>
+      <td><span class="td-link" onclick="verDetalleCliente('${escapeHtml(clienteId)}')">ver →</span></td>
+      <td><button class="btn-trash" title="Borrar cliente" onclick="borrarSoloCliente('${escapeHtml(clienteId)}')">🗑</button></td>
     </tr>`;
   }).join('');
 }
@@ -998,11 +1182,13 @@ function resolverIsp(ispStr) {
 }
 
 function escapeHtml(str) {
+  if (str == null) return '—';
   return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function tiempoRelativo(fecha) {
@@ -1045,10 +1231,10 @@ function cargarUsuarios() {
             onclick="resetPassword('${escapeHtml(email)}','${escapeHtml(uid)}')">
             Resetear contraseña
           </button>
-          <button class="btn-reset" style="background:rgba(239,68,68,0.12);color:var(--red);border-color:rgba(239,68,68,0.3)"
+          ${email !== ADMIN_EMAIL ? `<button class="btn-reset" style="background:rgba(239,68,68,0.12);color:var(--red);border-color:rgba(239,68,68,0.3)"
             onclick="borrarCliente('${escapeHtml(email)}','${escapeHtml(uid)}','${escapeHtml(clienteId)}')">
             Borrar
-          </button>
+          </button>` : ''}
         </td>
       </tr>`;
     }).join('');
@@ -1096,7 +1282,12 @@ async function _confirmarReset(email, uid) {
     // 1. Leer contraseña actual guardada en DB
     const snap = await db.ref(`usuarios/${uid}/pass`).once('value');
     const passActual = snap.val();
-    if (!passActual) throw new Error('No se encontró la contraseña guardada. Usá Firebase Console para este usuario.');
+    if (!passActual) {
+      if (errEl) errEl.innerHTML = 'Este usuario no tiene contraseña guardada (es un cliente legacy).<br>Para resetearlo: <strong>Firebase Console → Authentication → buscar usuario → editar contraseña</strong>.';
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = 'Confirmar';
+      return;
+    }
 
     // 2. Autenticar como el cliente para obtener su idToken
     const loginResp = await fetch(
@@ -1139,6 +1330,92 @@ function _toastUsuarios(msg, esError) {
   setTimeout(() => { t.style.opacity = '0'; }, 5000);
 }
 
+// ── CONFIGURACIÓN TELEGRAM ─────────────────────────────────────────────────
+function tgCargar() {
+  db.ref('admin_config/telegram').once('value', snap => {
+    const cfg = snap.val() || {};
+    if (cfg.bot_token)  document.getElementById('tg-token').value   = cfg.bot_token;
+    if (cfg.chat_id)    document.getElementById('tg-chat-id').value = cfg.chat_id;
+  });
+}
+
+async function tgGuardar() {
+  const token  = document.getElementById('tg-token').value.trim();
+  const chatId = document.getElementById('tg-chat-id').value.trim();
+  const st     = document.getElementById('tg-status');
+  if (!token || !chatId) { st.textContent = 'Completá ambos campos.'; st.style.color = 'var(--red)'; return; }
+  try {
+    await db.ref('admin_config/telegram').set({ bot_token: token, chat_id: chatId });
+    st.textContent = 'Configuración guardada ✓';
+    st.style.color = 'var(--green)';
+  } catch(e) {
+    st.textContent = 'Error: ' + e.message;
+    st.style.color = 'var(--red)';
+  }
+}
+
+async function tgProbar() {
+  const token  = document.getElementById('tg-token').value.trim();
+  const chatId = document.getElementById('tg-chat-id').value.trim();
+  const st     = document.getElementById('tg-status');
+  if (!token || !chatId) { st.textContent = 'Guardá la configuración primero.'; st.style.color = 'var(--red)'; return; }
+  st.textContent = 'Enviando mensaje de prueba...'; st.style.color = 'var(--text3)';
+  try {
+    const resp = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ chat_id: chatId, text: '✅ Mir Soluciones — conexión de Telegram configurada correctamente.' })
+    });
+    const data = await resp.json();
+    if (data.ok) { st.textContent = '¡Mensaje enviado! Revisá tu Telegram ✓'; st.style.color = 'var(--green)'; }
+    else { st.textContent = 'Error: ' + (data.description || 'respuesta inválida'); st.style.color = 'var(--red)'; }
+  } catch(e) {
+    st.textContent = 'Error de red: ' + e.message; st.style.color = 'var(--red)';
+  }
+}
+
+// ── BORRAR CLIENTE (solo datos, sin usuario vinculado) ──────────────────────
+function borrarSoloCliente(clienteId) {
+  const overlay = document.createElement('div');
+  overlay.className = 'reset-modal-overlay';
+  overlay.innerHTML = `
+    <div class="reset-modal">
+      <h3 style="color:var(--red)">Borrar cliente</h3>
+      <p>Esto eliminará todos los datos de monitoreo de <strong>${escapeHtml(clienteId)}</strong> de forma permanente.</p>
+      <p style="font-size:12px;color:var(--text3)">Esta acción no se puede deshacer.</p>
+      <div id="modal-err-bsc" style="font-size:11px;color:var(--red);min-height:16px;margin-bottom:10px"></div>
+      <div class="reset-modal-btns">
+        <button class="btn-modal-cancel" onclick="this.closest('.reset-modal-overlay').remove()">Cancelar</button>
+        <button class="btn-modal-confirm" id="modal-bsc-btn"
+          style="background:var(--red)"
+          onclick="_confirmarBorradoCliente('${escapeHtml(clienteId)}')">
+          Borrar definitivamente
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function _confirmarBorradoCliente(clienteId) {
+  const errEl = document.getElementById('modal-err-bsc');
+  const btn   = document.getElementById('modal-bsc-btn');
+  btn.disabled = true;
+  btn.textContent = 'Borrando...';
+  try {
+    await Promise.all([
+      db.ref(`clientes/${clienteId}`).remove(),
+      db.ref(`historial/${clienteId}`).remove(),
+      db.ref(`uptime_barra/${clienteId}`).remove(),
+      db.ref(`agentes/${clienteId}`).remove(),
+    ]);
+    document.querySelector('.reset-modal-overlay')?.remove();
+    _toastUsuarios(`Cliente ${clienteId} eliminado.`, false);
+  } catch(e) {
+    if (errEl) errEl.textContent = 'Error: ' + e.message;
+    btn.disabled = false;
+    btn.textContent = 'Borrar definitivamente';
+  }
+}
+
 // ── BORRAR CLIENTE ─────────────────────────────────────────────────────────
 function borrarCliente(email, uid, clienteId) {
   const overlay = document.createElement('div');
@@ -1169,17 +1446,28 @@ async function _confirmarBorrado(email, uid, clienteId) {
   btn.textContent = 'Borrando...';
 
   try {
-    // 1. Borrar datos de monitoreo
-    if (clienteId && clienteId !== '—') {
-      await db.ref(`clientes/${clienteId}`).remove();
-    }
-    // 2. Borrar registro de usuario
-    await db.ref(`usuarios/${uid}`).remove();
-
-    // 3. Intentar borrar cuenta de Firebase Auth (requiere pass guardada)
+    // 1. Leer pass ANTES de borrar /usuarios/ (para poder borrar Auth después)
+    let pass = null;
     try {
       const snap = await db.ref(`usuarios/${uid}/pass`).once('value');
-      const pass = snap.val();
+      pass = snap.val();
+    } catch(_) {}
+
+    // 2. Borrar todos los datos del cliente en Firebase DB
+    if (clienteId && clienteId !== '—') {
+      await Promise.all([
+        db.ref(`clientes/${clienteId}`).remove(),
+        db.ref(`historial/${clienteId}`).remove(),
+        db.ref(`uptime_barra/${clienteId}`).remove(),
+        db.ref(`agentes/${clienteId}`).remove(),
+      ]);
+    }
+
+    // 3. Borrar registro de usuario
+    await db.ref(`usuarios/${uid}`).remove();
+
+    // 4. Intentar borrar cuenta de Firebase Auth
+    try {
       if (pass) {
         const loginResp = await fetch(
           `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${firebaseConfig.apiKey}`,
@@ -1198,7 +1486,7 @@ async function _confirmarBorrado(email, uid, clienteId) {
     } catch(_) { /* Auth ya borrado o sin pass — no crítico */ }
 
     document.querySelector('.reset-modal-overlay')?.remove();
-    _toastUsuarios(`Cliente ${email.split('@')[0]} eliminado.`, false);
+    _toastUsuarios(`Cliente ${(email || '').split('@')[0]} eliminado.`, false);
     cargarUsuarios();
 
   } catch(e) {
@@ -1252,6 +1540,12 @@ function ncActualizarEmail() {
   document.getElementById('nc-email').value = id + '@clientes.mir.internal';
 }
 
+function ncGenerarToken() {
+  const arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+}
+
 function ncRegenerarPass() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#';
   const arr = new Uint8Array(16);
@@ -1269,9 +1563,18 @@ async function ncCrearCliente() {
   const status = document.getElementById('nc-status');
 
   if (!nombre || !id || !email || !pass) {
-    status.textContent = 'Completá el nombre del cliente primero.';
+    status.textContent = 'Completá todos los campos.';
     status.className = 'nc-status err';
     return;
+  }
+
+  // Validar que el cliente_id no exista ya
+  const snapExiste = await db.ref(`clientes/${id}`).once('value');
+  if (snapExiste.exists()) {
+    status.textContent = `Ya existe un cliente con el ID "${id}". Usá otro ID.`;
+    status.className = 'nc-status err';
+    return;
+  }
   }
 
   btn.disabled = true;
@@ -1310,7 +1613,53 @@ async function ncCrearCliente() {
       }
     }
 
-    // Éxito — mostrar datos
+    // Crear usuario agente en Firebase Auth
+    const agenteEmail = `agente_${id}@mir-agentes.internal`;
+    const agentePass  = ncGenerarToken().slice(0, 20); // 20 chars aleatorios
+    document.getElementById('res-token').textContent = '⟳ Creando agente...';
+    try {
+      const urlAgente = `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${firebaseConfig.apiKey}`;
+      const respAgente = await fetch(urlAgente, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ email: agenteEmail, password: agentePass, returnSecureToken: false })
+      });
+      const dataAgente = await respAgente.json();
+      if (dataAgente.error && dataAgente.error.message !== 'EMAIL_EXISTS') {
+        throw new Error('Error creando agente: ' + dataAgente.error.message);
+      }
+    } catch(agErr) {
+      console.warn('Error creando usuario agente:', agErr);
+    }
+
+    // Guardar credenciales del agente en /agentes/{id} para que el instalador las descargue
+    try {
+      await db.ref('agentes/' + id).set({
+        agente_email:    agenteEmail,
+        agente_password: agentePass,
+        creado_ts:       new Date().toISOString()
+      });
+    } catch(agCfgErr) {
+      console.warn('Error guardando config agente:', agCfgErr);
+    }
+
+    // Generar token de instalación con credenciales del agente
+    const installToken = ncGenerarToken();
+    try {
+      await db.ref('install_tokens/' + installToken).set({
+        cliente_id:      id,
+        agente_email:    agenteEmail,
+        agente_password: agentePass,
+        expires_ts:      Date.now() + 72 * 60 * 60 * 1000,
+        generado_ts:     new Date().toISOString()
+      });
+      document.getElementById('res-token').textContent = installToken;
+    } catch(tokErr) {
+      document.getElementById('res-token').textContent = '(error — regenerar manualmente)';
+      console.warn('Error guardando install token:', tokErr);
+    }
+
+    // Mostrar datos
     document.getElementById('res-nombre').textContent = nombre;
     document.getElementById('res-id').textContent     = id;
     document.getElementById('res-email').textContent  = email;
@@ -1345,7 +1694,8 @@ function ncCopiarTodo() {
   const id     = document.getElementById('res-id').textContent;
   const email  = document.getElementById('res-email').textContent;
   const pass   = document.getElementById('res-pass').textContent;
-  const txt = `Cliente: ${nombre}\nID: ${id}\nEmail Firebase: ${email}\nContraseña Firebase: ${pass}`;
+  const token  = document.getElementById('res-token').textContent;
+  const txt = `Cliente: ${nombre}\nID: ${id}\nEmail Firebase: ${email}\nContraseña Firebase: ${pass}\nToken instalador: ${token}`;
   navigator.clipboard.writeText(txt).then(() => {
     const btn = event.currentTarget;
     const orig = btn.textContent;
@@ -1360,6 +1710,141 @@ function ncCopiarReglas() {
     btn.textContent = '✓ Copiado';
     setTimeout(() => btn.textContent = '📋 Copiar reglas', 2000);
   }).catch(() => alert(FIREBASE_RULES));
+}
+
+// ── PANEL DETALLE CLIENTE ──
+function verDetalleCliente(clienteId) {
+  const rep = ((clientesData || {})[clienteId] || {}).ultimo_reporte || {};
+  const red = rep.red || {};
+  const sis = rep.sistema || {};
+  const ts  = rep.ts ? parsearFecha(rep.ts) : null;
+  const minutos = ts ? Math.floor((Date.now() - ts.getTime()) / 60000) : 9999;
+  const online  = minutos < 15;
+
+  document.getElementById('det-title').textContent = clienteId;
+  document.getElementById('det-status-sub').innerHTML =
+    `<span style="color:${online ? 'var(--green)' : 'var(--red)'}">${online ? 'En línea' : 'Sin respuesta'}</span>` +
+    `&nbsp;·&nbsp;Sync ${tiempoRelativo(ts)}`;
+
+  function fila(lbl, val, sub) {
+    return `<div class="det-row"><span class="det-lbl">${lbl}</span><span class="det-val">${val}${sub ? '<br><span class="det-sub">' + sub + '</span>' : ''}</span></div>`;
+  }
+  function barra(pct) {
+    const c = pct >= 90 ? 'var(--red)' : pct >= 75 ? 'var(--yellow)' : 'var(--green)';
+    return `<div class="det-bar"><div class="det-bar-fill" style="width:${Math.min(pct,100)}%;background:${c}"></div></div>`;
+  }
+
+  let html = '';
+
+  // ── Red ──
+  html += '<div class="det-sec"><div class="det-sec-title">Red e Internet</div>';
+  if (red.gateway_ip) html += fila('Gateway', escapeHtml(red.gateway_ip), red.gateway_online !== false ? (red.gateway_latencia != null ? escapeHtml(red.gateway_latencia) + ' ms' : 'online') : 'offline');
+  html += fila('Internet', red.internet_online !== false ? 'Online' : 'Offline', red.internet_latencia != null ? escapeHtml(red.internet_latencia) + ' ms latencia' : null);
+  if (red.bajada_mbps != null) html += fila('Velocidad', escapeHtml(red.bajada_mbps) + ' Mbps ↓', red.subida_mbps != null ? escapeHtml(red.subida_mbps) + ' Mbps ↑' : null);
+  if (red.isp) html += fila('ISP', escapeHtml(red.isp));
+  if (red.ip_publica) html += fila('IP pública', escapeHtml(red.ip_publica));
+  if (red.conexion_local) {
+    const cl = red.conexion_local;
+    if (cl.ip_local) html += fila('IP local', escapeHtml(cl.ip_local));
+    if (cl.iface)    html += fila('Interfaz', escapeHtml(cl.iface));
+  }
+  html += '</div>';
+
+  // ── Cámaras / NVR ──
+  if (rep.camaras && rep.camaras.length) {
+    html += '<div class="det-sec"><div class="det-sec-title">Cámaras / NVR</div>';
+    for (const nvr of rep.camaras) {
+      const nvrColor = nvr.online ? 'var(--green)' : 'var(--red)';
+      html += `<div class="det-nvr">`;
+      html += `<div class="det-nvr-head">
+        <span class="det-nvr-name"><span class="dot" style="background:${nvrColor}"></span>${escapeHtml(nvr.nombre)}</span>
+        <span class="det-nvr-stat">${escapeHtml(nvr.canales_activos)} conectados · ${escapeHtml(nvr.canales_grabando)} grabando</span>
+      </div>`;
+      html += fila('IP', escapeHtml(nvr.ip || '—'));
+      html += fila('Marca', escapeHtml((nvr.marca || '—').charAt(0).toUpperCase() + (nvr.marca || '').slice(1)));
+      if (nvr.modelo) html += fila('Modelo', escapeHtml(nvr.modelo));
+      if (!nvr.online && nvr.error_tipo) html += fila('Error', escapeHtml(nvr.error_tipo));
+      // Canales
+      if (nvr.canales && nvr.canales.length) {
+        html += `<div class="det-cam-grid">`;
+        for (const c of nvr.canales) {
+          const grabColor = c.grabando ? 'var(--green)' : (c.activa ? 'var(--yellow)' : 'var(--text3)');
+          const grabLabel = c.grabando ? 'Grabando' : (c.activa ? 'Sin grabar' : 'Inactivo');
+          html += `<div class="det-cam">
+            <div class="det-cam-name">${escapeHtml(c.nombre || 'Canal ' + c.id)}</div>
+            <div class="det-cam-status" style="color:${grabColor}">${grabLabel}</div>
+          </div>`;
+        }
+        html += `</div>`;
+      }
+      // Discos NVR
+      if (nvr.discos && nvr.discos.length) {
+        for (const d of nvr.discos) {
+          html += fila('Disco ' + escapeHtml(d.id || ''), escapeHtml(d.usado_pct) + '%', (d.libre_gb != null ? escapeHtml(d.libre_gb) + ' GB libres' : '') + (d.capacidad_gb != null ? ' de ' + escapeHtml(d.capacidad_gb) + ' GB' : ''));
+          html += barra(d.usado_pct);
+        }
+      }
+      html += `</div>`;
+    }
+    html += '</div>';
+  }
+
+  // ── Hardware ──
+  if (sis.cpu_modelo || sis.cpu_uso_pct !== undefined || sis.ram_total_gb !== undefined || (sis.discos && sis.discos.length)) {
+    html += '<div class="det-sec"><div class="det-sec-title">Hardware</div>';
+    if (sis.cpu_modelo) html += fila('CPU', escapeHtml(sis.cpu_modelo));
+    if (sis.cpu_uso_pct !== undefined) {
+      html += fila('Uso CPU', escapeHtml(sis.cpu_uso_pct) + '%', sis.cpu_nucleos ? escapeHtml(sis.cpu_nucleos) + ' núcleos' : null);
+      html += barra(sis.cpu_uso_pct);
+    }
+    if (sis.ram_modulos && sis.ram_modulos.length) {
+      for (const m of sis.ram_modulos) {
+        const desc = [m.fabricante !== '—' ? m.fabricante : '', m.modelo !== '—' ? m.modelo : ''].filter(Boolean).join(' ') || '—';
+        html += fila('Módulo RAM', escapeHtml(desc), (m.velocidad_mhz !== '—' ? escapeHtml(m.velocidad_mhz) + ' MHz · ' : '') + escapeHtml(m.capacidad_gb) + ' GB');
+      }
+    }
+    if (sis.ram_total_gb !== undefined) {
+      html += fila('Uso RAM', escapeHtml(sis.ram_uso_pct) + '%', escapeHtml(sis.ram_usada_gb) + ' GB / ' + escapeHtml(sis.ram_total_gb) + ' GB');
+      html += barra(sis.ram_uso_pct);
+    }
+    if (sis.discos && sis.discos.length) {
+      for (const d of sis.discos) {
+        const label = escapeHtml(d.unidad) + (d.modelo ? ' — ' + escapeHtml(d.modelo) : '');
+        html += fila(label, escapeHtml(d.uso_pct) + '%', escapeHtml(d.libre_gb) + ' GB libres de ' + escapeHtml(d.total_gb) + ' GB');
+        html += barra(d.uso_pct);
+      }
+    }
+    html += '</div>';
+  }
+
+  // ── Dispositivos en red ──
+  if (red.dispositivos_red && red.dispositivos_red.length) {
+    html += '<div class="det-sec"><div class="det-sec-title">Dispositivos en red (' + red.dispositivos_red.length + ')</div>';
+    for (const d of red.dispositivos_red) {
+      const nombre = d.hostname || d.fabricante || '—';
+      html += fila(escapeHtml(d.ip), escapeHtml(nombre), escapeHtml(d.mac || '—'));
+    }
+    html += '</div>';
+  }
+
+  // ── Sistema ──
+  html += '<div class="det-sec"><div class="det-sec-title">Sistema</div>';
+  if (sis.os) html += fila('OS', escapeHtml(sis.os));
+  if (sis.uptime_seg !== undefined) {
+    const h = Math.floor(sis.uptime_seg / 3600);
+    const d = Math.floor(h / 24);
+    html += fila('Encendida hace', d > 0 ? d + 'd ' + (h % 24) + 'h' : h + 'h ' + Math.floor((sis.uptime_seg % 3600) / 60) + 'm');
+  }
+  if (rep.agente_version) html += fila('Agente', 'v' + escapeHtml(rep.agente_version));
+  html += fila('Última sync', tiempoRelativo(ts));
+  html += '</div>';
+
+  document.getElementById('det-body').innerHTML = html;
+  document.getElementById('det-overlay').classList.add('open');
+}
+
+function cerrarDetalle() {
+  document.getElementById('det-overlay').classList.remove('open');
 }
 </script>
 </body>

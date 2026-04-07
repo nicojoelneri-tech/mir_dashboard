@@ -6,6 +6,14 @@ mir_ultima_velocidad.json
 mir_dispositivos_conocidos.json
 mir_offline_*.json
 mir_config.json
+mir_camaras.json
+mir_isp_cache.json
+
+# Distribution ZIP (regenerated on demand)
+MirInstalador.zip
+
+# Documentation / research (local reference, not source code)
+docs/
 
 # Python
 __pycache__/

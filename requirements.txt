@@ -1,0 +1,2 @@
+# mir_alertas.py usa solo stdlib — no requiere dependencias externas
+# Este archivo existe para que Render detecte el proyecto como Python

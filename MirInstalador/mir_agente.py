@@ -37,17 +37,24 @@ INTERVALO_ESCANEO   = 300  # escanear red cada 5 minutos
 
 # Directorio base del agente (funciona aunque lo inicie el Programador de tareas)
 _DIR      = os.path.dirname(os.path.abspath(__file__))
+
+# Directorio de datos (escritura) — usa %LOCALAPPDATA% para evitar error de permisos en Program Files
+_DATA_DIR = os.path.join(os.environ.get("LOCALAPPDATA", _DIR), "Mir Soluciones")
+os.makedirs(_DATA_DIR, exist_ok=True)
+
 _cfg_path = os.path.join(_DIR, "mir_config.json")
 if os.path.exists(_cfg_path):
     try:
         with open(_cfg_path, encoding="utf-8") as _f:
             _cfg = json.load(_f)
-        CLIENTE_ID        = _cfg.get("cliente_id",        CLIENTE_ID)
-        FIREBASE_URL      = _cfg.get("firebase_url",      FIREBASE_URL)
-        FIREBASE_API_KEY  = _cfg.get("firebase_api_key",  FIREBASE_API_KEY)
-        CLAVE_JSON        = _cfg.get("clave_json",        CLAVE_JSON)
-        INTERVALO_SEG     = _cfg.get("intervalo_seg",     INTERVALO_SEG)
-        INTERVALO_ESCANEO = _cfg.get("intervalo_escaneo", INTERVALO_ESCANEO)
+        CLIENTE_ID         = _cfg.get("cliente_id",        CLIENTE_ID)
+        FIREBASE_URL       = _cfg.get("firebase_url",      FIREBASE_URL)
+        FIREBASE_API_KEY   = _cfg.get("firebase_api_key",  FIREBASE_API_KEY)
+        CLAVE_JSON         = _cfg.get("clave_json",        CLAVE_JSON)
+        INTERVALO_SEG      = _cfg.get("intervalo_seg",     INTERVALO_SEG)
+        INTERVALO_ESCANEO  = _cfg.get("intervalo_escaneo", INTERVALO_ESCANEO)
+        _AGENTE_EMAIL      = _cfg.get("agente_email",      _AGENTE_EMAIL)
+        _AGENTE_CONTRASENA = _cfg.get("agente_password",   _AGENTE_CONTRASENA)
     except Exception as _e:
         print(f"  [!] Error leyendo mir_config.json: {_e}")
 
@@ -169,7 +176,7 @@ def detectar_isp():
     global _isp_cache
     if _isp_cache.get("ts") and time.time() - _isp_cache["ts"] < 3600:
         return _isp_cache
-    archivo_cache = os.path.join(_DIR, "mir_isp_cache.json")
+    archivo_cache = os.path.join(_DATA_DIR, "mir_isp_cache.json")
     try:
         import urllib.request
         req = urllib.request.Request(
@@ -265,6 +272,81 @@ def recopilar_sistema():
         print(f"  [!] Error recopilando hardware: {e}")
         return None
 
+def _ps_file(script):
+    """Ejecuta un script PowerShell desde archivo temporal (evita problemas de escaping)."""
+    import tempfile, os as _os
+    tmp = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.ps1', delete=False, encoding='utf-8') as f:
+            f.write(script)
+            tmp = f.name
+        r = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", tmp],
+            capture_output=True, text=True, timeout=20, creationflags=_NO_WINDOW
+        )
+        return r.stdout.strip()
+    except Exception:
+        return ""
+    finally:
+        if tmp:
+            try: _os.unlink(tmp)
+            except: pass
+
+def recopilar_modelos_hardware():
+    """Obtiene modelos de CPU, RAM y discos via PowerShell (solo Windows, una vez al inicio)."""
+    if platform.system().lower() != "windows":
+        return {}
+    resultado = {}
+
+    # CPU modelo
+    try:
+        nombre = _ps_file("(Get-WmiObject Win32_Processor).Name")
+        if nombre:
+            resultado["cpu_modelo"] = nombre
+    except Exception:
+        pass
+
+    # RAM — por módulo físico
+    try:
+        raw = _ps_file(
+            "Get-WmiObject Win32_PhysicalMemory | "
+            "ForEach-Object { $_.Manufacturer.Trim() + '|' + $_.PartNumber.Trim() + '|' + $_.Speed + '|' + [Math]::Round($_.Capacity/1GB,1) }"
+        )
+        modulos = []
+        for line in (raw.splitlines() if raw else []):
+            p = line.split("|")
+            if len(p) >= 4:
+                modulos.append({
+                    "fabricante":    p[0] or "—",
+                    "modelo":        p[1] or "—",
+                    "velocidad_mhz": p[2] or "—",
+                    "capacidad_gb":  p[3]
+                })
+        if modulos:
+            resultado["ram_modulos"] = modulos
+    except Exception:
+        pass
+
+    # Discos: mapa letra → modelo físico usando Get-Partition + Get-Disk
+    try:
+        raw = _ps_file(
+            "Get-Partition | Where-Object { $_.DriveLetter } | ForEach-Object {\n"
+            "    $model = (Get-Disk -Number $_.DiskNumber).FriendlyName\n"
+            "    Write-Output ($_.DriveLetter + ':|' + $model)\n"
+            "}"
+        )
+        mapa = {}
+        for line in (raw.splitlines() if raw else []):
+            p = line.split("|", 1)
+            if len(p) == 2 and p[0] and p[1]:
+                mapa[p[0].strip()] = p[1].strip()
+        if mapa:
+            resultado["discos_por_letra"] = mapa
+    except Exception:
+        pass
+
+    return resultado
+
 # ─────────────────────────────────────────────
 #  FIREBASE
 # ─────────────────────────────────────────────
@@ -349,12 +431,13 @@ def obtener_token():
 
     return None
 
-def enviar_firebase(datos, nodo="ultimo_reporte"):
+def enviar_firebase(datos, nodo="ultimo_reporte", guardar_si_falla=True):
     try:
         import urllib.request
         token = obtener_token()
         if not token:
-            guardar_local(datos)
+            if guardar_si_falla:
+                guardar_local(datos)
             return False
         url  = f"{FIREBASE_URL}/clientes/{CLIENTE_ID}/{nodo}.json?auth={token}"
         body = json.dumps(datos, default=str).encode("utf-8")
@@ -366,7 +449,8 @@ def enviar_firebase(datos, nodo="ultimo_reporte"):
             return resp.status == 200
     except Exception as e:
         print(f"  [!] Firebase error: {e}")
-        guardar_local(datos)
+        if guardar_si_falla:
+            guardar_local(datos)
         return False
 
 def guardar_uptime_barra(online):
@@ -439,7 +523,7 @@ def guardar_historial(reporte):
 
 def guardar_local(datos):
     try:
-        nombre = os.path.join(_DIR, f"mir_offline_{datetime.datetime.now().strftime('%Y%m%dT%H%M%S')}.json")
+        nombre = os.path.join(_DATA_DIR, f"mir_offline_{datetime.datetime.now().strftime('%Y%m%dT%H%M%S')}.json")
         with open(nombre, "w") as f:
             json.dump(datos, f, indent=2, default=str)
         print(f"  [!] Guardado local: {nombre}")
@@ -449,12 +533,16 @@ def guardar_local(datos):
 def reintentar_offline():
     """Reenvía archivos offline pendientes y elimina los que tienen más de 7 días."""
     try:
-        archivos = sorted(glob.glob(os.path.join(_DIR, "mir_offline_*.json")))
+        archivos = sorted(glob.glob(os.path.join(_DATA_DIR, "mir_offline_*.json")))
         if not archivos:
             return
         print(f"  [..] {len(archivos)} archivo(s) offline pendiente(s). Intentando reenviar...")
         enviados, viejos = 0, 0
         limite = time.time() - 7 * 86400
+        # Verificar que hay token antes de intentar reenviar
+        if not obtener_token():
+            print(f"  [!] Sin conexión a Firebase — reenvío pospuesto.")
+            return
         for archivo in archivos:
             try:
                 if os.path.getmtime(archivo) < limite:
@@ -463,9 +551,11 @@ def reintentar_offline():
                     continue
                 with open(archivo) as f:
                     datos = json.load(f)
-                if enviar_firebase(datos):
+                if enviar_firebase(datos, guardar_si_falla=False):
                     os.remove(archivo)
                     enviados += 1
+                else:
+                    break  # si falla uno, no seguir intentando
             except Exception:
                 pass
         partes = []
@@ -606,11 +696,23 @@ def detectar_gateway():
 
 def medir_velocidad():
     try:
-        import speedtest
-        print("  Midiendo velocidad (~20 seg)...")
-        st = speedtest.Speedtest(secure=True)
-        st.get_best_server()
-        return round(st.download()/1_000_000, 1), round(st.upload()/1_000_000, 1)
+        # speedtest.py llama sys.stdout.fileno() al importarse — bajo pythonw stdout es None
+        # Necesitamos un archivo real con fileno() antes de hacer el import
+        _so, _se = sys.stdout, sys.stderr
+        _null_out = open(os.devnull, 'w')
+        _null_err = open(os.devnull, 'w')
+        sys.stdout = _null_out
+        sys.stderr = _null_err
+        try:
+            import speedtest
+            st = speedtest.Speedtest(secure=True)
+            st.get_best_server()
+            resultado = round(st.download()/1_000_000, 1), round(st.upload()/1_000_000, 1)
+        finally:
+            sys.stdout, sys.stderr = _so, _se
+            _null_out.close()
+            _null_err.close()
+        return resultado
     except Exception:
         return None, None
 
@@ -823,8 +925,8 @@ def consultar_hikvision(config, req, HTTPDigestAuth):
                 for ch in root.iter("StreamingChannel"):
                     ch_id  = str(ch.findtext("id") or "")
                     nombre = (ch.findtext("channelName") or f"Canal {ch_id}").strip()
-                    activa = (ch.findtext("enabled") or "").lower() == "true"
-                    canales_raw.append({"id": ch_id, "nombre": nombre, "activa": activa, "grabando": False})
+                    # activa se determina en step 3.5 con señal real; "enabled" solo indica configurado
+                    canales_raw.append({"id": ch_id, "nombre": nombre, "activa": False, "grabando": False})
 
                 # Auto-detectar formato: si max ID >= 100 → NVR/DVR nuevo (filtrar main streams)
                 ids_num = [int(c["id"]) for c in canales_raw if c["id"].isdigit()]
@@ -832,6 +934,45 @@ def consultar_hikvision(config, req, HTTPDigestAuth):
                     res["canales"] = [c for c in canales_raw if c["id"].endswith("01")]
                 else:
                     res["canales"] = canales_raw  # DVR antiguo: cada ID es un canal físico
+
+        # 3.5 — Señal real por canal (enabled ≠ cámara conectada)
+        # NVR (cámaras IP): InputProxy status
+        r_ip = req.get(f"{base}/ContentMgmt/InputProxy/channels/status", auth=auth, timeout=(3.05, 10))
+        inputproxy_ok = False
+        if r_ip.status_code == 200:
+            root_ip = _xml_parse(r_ip.text)
+            if root_ip is not None:
+                con_senal = {}
+                for ch in root_ip.iter("InputProxyChannelStatus"):
+                    cid = str(ch.findtext("id") or "")
+                    online = (ch.findtext("onlineStatus") or "").lower() == "online"
+                    # ID 1 → stream 101, ID 2 → 201, etc.
+                    sid = str(int(cid) * 100 + 1) if cid.isdigit() else cid
+                    con_senal[sid] = online
+                if con_senal:
+                    inputproxy_ok = True
+                    for canal in res["canales"]:
+                        canal["activa"] = con_senal.get(canal["id"], False)
+        if not inputproxy_ok:
+            # DVR analógico: consultar status por canal (101→vid 1, 201→vid 2, etc.)
+            for canal in res["canales"]:
+                cid = canal["id"]
+                vid_id = str(int(cid) // 100) if cid.isdigit() and int(cid) >= 100 else cid
+                try:
+                    r_vs = req.get(f"{base}/System/Video/inputs/channels/{vid_id}/status",
+                                   auth=auth, timeout=(2, 5))
+                    if r_vs.status_code == 200:
+                        root_vs = _xml_parse(r_vs.text)
+                        if root_vs is not None:
+                            signal = (root_vs.findtext("signalStatus") or
+                                      root_vs.findtext(".//signalStatus") or "").lower()
+                            canal["activa"] = signal in ("connected", "online", "true", "1")
+                        else:
+                            canal["activa"] = False
+                    else:
+                        canal["activa"] = False
+                except Exception:
+                    canal["activa"] = False
 
         # 4. Estado de grabación — intentar endpoint real primero, luego schedule como fallback
         grabando_desde_status = False
@@ -1036,12 +1177,13 @@ def cargar_config_camaras():
 # ─────────────────────────────────────────────
 #  LOOP PRINCIPAL
 # ─────────────────────────────────────────────
-archivo_velocidad    = os.path.join(_DIR, "mir_ultima_velocidad.json")
-archivo_dispositivos = os.path.join(_DIR, "mir_dispositivos_conocidos.json")
+archivo_velocidad    = os.path.join(_DATA_DIR, "mir_ultima_velocidad.json")
+archivo_dispositivos = os.path.join(_DATA_DIR, "mir_dispositivos_conocidos.json")
 medicion             = 0
 ultima_escaneo       = 0
 ultima_historial     = 0
 ultima_limpieza      = 0
+dispositivos_actuales = []   # persiste entre ciclos, solo se actualiza en escaneo ARP
 INTERVALO_HISTORIAL  = 600    # guardar historial cada 10 min
 INTERVALO_LIMPIEZA   = 86400  # limpieza diaria
 
@@ -1069,6 +1211,26 @@ else:
 
 config_camaras = cargar_config_camaras()
 
+print("  [..] Recopilando modelos de hardware...")
+_modelos_hw = recopilar_modelos_hardware()
+if _modelos_hw:
+    print(f"  [OK] CPU: {_modelos_hw.get('cpu_modelo','—')}")
+else:
+    print("  [!] No se pudo obtener modelos de hardware")
+
+def _armar_sistema():
+    """Combina recopilar_sistema() con modelos de hardware. Enriquece cada disco con su modelo físico."""
+    datos = recopilar_sistema() or {}
+    mapa = _modelos_hw.get("discos_por_letra", {})
+    for d in datos.get("discos", []):
+        # normalizar "C:\\" → "C:"
+        letra = d.get("unidad", "").replace("\\", "/").split(":")[0].upper() + ":"
+        modelo = mapa.get(letra)
+        if modelo:
+            d["modelo"] = modelo
+    hw_extra = {k: v for k, v in _modelos_hw.items() if k != "discos_por_letra"}
+    return {**datos, **hw_extra}
+
 print("\n  [OK] Iniciando monitoreo...\n")
 reintentar_offline()
 
@@ -1076,208 +1238,228 @@ while True:
     medicion += 1
     ahora = time.time()
     print(f"\n[{ts()}]  Medicion #{medicion}")
-    separador()
-
-    # ── RED E INTERNET ──
-    gw = detectar_gateway()
-    info_red_local = obtener_info_red(gw)
-    gw_ok,   gw_lat   = ping(gw)
-    inet_ok, inet_lat = ping("8.8.8.8")
-    cf_ok,   cf_lat   = ping("1.1.1.1")
-
-    estado_gw   = f"OK  ({gw_lat:.0f} ms)"   if gw_ok and gw_lat   else ("OK" if gw_ok   else "OFFLINE")
-    estado_inet = f"OK  ({inet_lat:.0f} ms)"  if inet_ok and inet_lat else ("OK" if inet_ok else "OFFLINE")
-    estado_cf   = f"OK  ({cf_lat:.0f} ms)"    if cf_ok and cf_lat   else ("OK" if cf_ok   else "OFFLINE")
-
-    print(f"  Router/Gateway  {gw:<18}  {estado_gw}")
-    print(f"  Internet        8.8.8.8            {estado_inet}")
-    print(f"  Cloudflare      1.1.1.1            {estado_cf}")
-
-    # ── VELOCIDAD ──
-    bajada, subida = None, None
-    _ultimo_cache = {}
-    archivo_lock = archivo_velocidad + ".lock"
-
-    # Cargar caché (válido o como fallback)
-    if os.path.exists(archivo_velocidad):
-        try:
-            with open(archivo_velocidad) as f:
-                _ultimo_cache = json.load(f)
-        except Exception:
-            pass
-
-    cache_fresco = ahora - _ultimo_cache.get("ts", 0) < 600
-    if cache_fresco:
-        bajada, subida = _ultimo_cache.get("bajada"), _ultimo_cache.get("subida")
-
-    if not cache_fresco:
-        lock_activo = os.path.exists(archivo_lock) and (ahora - os.path.getmtime(archivo_lock) < 120)
-        if lock_activo:
-            # Otro proceso mide: usar valores anteriores como fallback
-            bajada, subida = _ultimo_cache.get("bajada"), _ultimo_cache.get("subida")
-        else:
+    try:
+        separador()
+    
+        # ── RED E INTERNET ──
+        gw = detectar_gateway()
+        info_red_local = obtener_info_red(gw)
+        gw_ok,   gw_lat   = ping(gw)
+        inet_ok, inet_lat = ping("8.8.8.8")
+        cf_ok,   cf_lat   = ping("1.1.1.1")
+    
+        estado_gw   = f"OK  ({gw_lat:.0f} ms)"   if gw_ok and gw_lat   else ("OK" if gw_ok   else "OFFLINE")
+        estado_inet = f"OK  ({inet_lat:.0f} ms)"  if inet_ok and inet_lat else ("OK" if inet_ok else "OFFLINE")
+        estado_cf   = f"OK  ({cf_lat:.0f} ms)"    if cf_ok and cf_lat   else ("OK" if cf_ok   else "OFFLINE")
+    
+        print(f"  Router/Gateway  {gw:<18}  {estado_gw}")
+        print(f"  Internet        8.8.8.8            {estado_inet}")
+        print(f"  Cloudflare      1.1.1.1            {estado_cf}")
+    
+        # ── VELOCIDAD ──
+        bajada, subida = None, None
+        _ultimo_cache = {}
+        archivo_lock = archivo_velocidad + ".lock"
+    
+        # Cargar caché (válido o como fallback)
+        if os.path.exists(archivo_velocidad):
             try:
-                open(archivo_lock, "w").close()
-                nuevo_b, nuevo_s = medir_velocidad()
-                if nuevo_b is not None:
-                    bajada, subida = nuevo_b, nuevo_s
-                    try:
-                        with open(archivo_velocidad, "w") as f:
-                            json.dump({"ts": ahora, "bajada": bajada, "subida": subida}, f)
-                    except Exception:
-                        pass
-                else:
-                    # Speedtest falló: usar último valor conocido como fallback
-                    bajada, subida = _ultimo_cache.get("bajada"), _ultimo_cache.get("subida")
-            finally:
-                try:
-                    os.remove(archivo_lock)
-                except Exception:
-                    pass
-
-    separador()
-    if bajada is not None:
-        print(f"  Bajada    {bajada} Mbps  |  Subida  {subida} Mbps")
-
-    # ── ESCANEO DE RED ──
-    dispositivos_actuales = []
-    nuevos_dispositivos   = []
-
-    if ahora - ultima_escaneo >= INTERVALO_ESCANEO:
-        print(f"  [..] Escaneando red local...")
-        ip_local = obtener_ip_local()
-        if ip_local:
-            prefijo = calcular_rango_red(ip_local)
-            ping_sweep(prefijo, (1, 30))
-            time.sleep(1)
-            dispositivos_actuales = escanear_arp()
-
-            # Detectar dispositivos nuevos
-            for d in dispositivos_actuales:
-                mac = d["mac"]
-                if mac not in dispositivos_conocidos:
-                    nuevos_dispositivos.append(d)
-                    dispositivos_conocidos[mac] = d
-
-            # Guardar conocidos
-            try:
-                with open(archivo_dispositivos, "w") as f:
-                    json.dump(dispositivos_conocidos, f, indent=2, default=str)
+                with open(archivo_velocidad) as f:
+                    _ultimo_cache = json.load(f)
             except Exception:
                 pass
-
-            ultima_escaneo = ahora
-            print(f"  [OK] {len(dispositivos_actuales)} dispositivos en la red" +
-                  (f" · {len(nuevos_dispositivos)} nuevo(s)" if nuevos_dispositivos else ""))
-
-            for d in dispositivos_actuales:
-                nuevo = " ★ NUEVO" if d["mac"] in [n["mac"] for n in nuevos_dispositivos] else ""
-                nombre = d["hostname"] or d["fabricante"]
-                print(f"       {d['ip']:<16} {nombre:<20} {d['mac']}{nuevo}")
-    else:
-        secs_restantes = int(INTERVALO_ESCANEO - (ahora - ultima_escaneo))
-        print(f"  Red local: próximo escaneo en {secs_restantes}s")
-
-    # ── ISP ──
-    isp_info = detectar_isp()
-
-    # ── CÁMARAS / NVR ──
-    camaras_reporte = []
-    if config_camaras:
-        print(f"  [..] Consultando {len(config_camaras)} NVR(s)...")
-        for cam_cfg in config_camaras:
-            estado_cam = consultar_nvr(cam_cfg)
-            camaras_reporte.append(estado_cam)
-            icono   = "✓" if estado_cam["online"] else "✗"
-            canales = f"{estado_cam['canales_grabando']}/{estado_cam['canales_activos']} grabando"
-            disco0  = estado_cam["discos"][0] if estado_cam["discos"] else None
-            disco_s = f" · disco {disco0['usado_pct']}%" if disco0 else ""
-            print(f"       {cam_cfg.get('nombre', cam_cfg['ip'])}: {icono}  {canales}{disco_s}")
-
-    # ── ESTADO ──
-    if not inet_ok:
-        estado = "SIN INTERNET"
-    elif not gw_ok:
-        estado = "SIN ACCESO AL ROUTER"
-    else:
-        estado = "CONEXION NORMAL"
-
-    separador()
-    print(f"  ESTADO: {estado}")
-    separador()
-
-    # ── ARMAR REPORTE ──
-    alertas = []
-    if not inet_ok:
-        alertas.append({"tipo": "internet_offline", "ts": datetime.datetime.now(datetime.timezone.utc).isoformat()})
-    for d in nuevos_dispositivos:
-        alertas.append({
-            "tipo":       "dispositivo_nuevo",
-            "ip":         d["ip"],
-            "mac":        d["mac"],
-            "fabricante": d["fabricante"],
-            "ts":         d["ts"]
-        })
-    ts_ahora = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    for cam in camaras_reporte:
-        if not cam["online"]:
-            alertas.append({"tipo": "nvr_offline", "nvr": cam["nombre"], "ip": cam["ip"], "ts": ts_ahora})
-        for disco in cam.get("discos", []):
-            if disco.get("usado_pct", 0) >= 90:
-                alertas.append({"tipo": "disco_lleno", "nvr": cam["nombre"],
-                                 "disco": disco["id"], "usado_pct": disco["usado_pct"], "ts": ts_ahora})
-
-    reporte = {
-        "cliente_id": CLIENTE_ID,
-        "ts":         datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "red": {
-            "gateway_ip":          gw,
-            "gateway_online":      gw_ok,
-            "gateway_latencia":    gw_lat,
-            "internet_online":     inet_ok,
-            "internet_latencia":   inet_lat,
-            "cf_latencia":         cf_lat,
-            "bajada_mbps":         bajada,
-            "subida_mbps":         subida,
-            "estado":              estado,
-            "isp":                 isp_info.get("isp") or None,
-            "ip_publica":          isp_info.get("ip_publica") or None,
-            "dispositivos_red":    dispositivos_actuales if dispositivos_actuales else None,
-            "total_dispositivos":  len(dispositivos_actuales) if dispositivos_actuales else None,
-            "conexion_local":      info_red_local if info_red_local else None
-        },
-        "camaras": camaras_reporte if camaras_reporte else None,
-        "alertas": alertas,
-        "sistema": recopilar_sistema(),
-        "agente_version": "2.2"
-    }
-
-    print("  [..] Enviando a Firebase...", end=" ", flush=True)
-    ok = enviar_firebase(reporte)
-    print("OK ✓" if ok else "ERROR")
-
-    # ── UPTIME BARRA (cada ciclo, para persistencia en el dashboard) ──
-    if ok:
-        guardar_uptime_barra(inet_ok)
-
-    # ── HISTORIAL (cada 10 minutos) ──
-    if ok and ahora - ultima_historial >= INTERVALO_HISTORIAL:
-        guardar_historial(reporte)
-        ultima_historial = ahora
-
-    # ── LIMPIEZA DIARIA ──
-    if ahora - ultima_limpieza >= INTERVALO_LIMPIEZA:
-        print("\n  [..] Ejecutando limpieza diaria...")
-        limpiar_dispositivos_viejos()
-        limpiar_alertas_firebase()
-        limpiar_uptime_barra()
-        reintentar_offline()
-        ultima_limpieza = ahora
-        print("  [OK] Limpieza diaria completada.")
-
-    print(f"\n  Proxima medicion en {INTERVALO_SEG} segundos...")
-    try:
-        time.sleep(INTERVALO_SEG)
+    
+        cache_fresco = ahora - _ultimo_cache.get("ts", 0) < 600
+        if cache_fresco:
+            bajada, subida = _ultimo_cache.get("bajada"), _ultimo_cache.get("subida")
+    
+        if not cache_fresco:
+            lock_activo = os.path.exists(archivo_lock) and (ahora - os.path.getmtime(archivo_lock) < 120)
+            if lock_activo:
+                # Otro proceso mide: usar valores anteriores como fallback
+                bajada, subida = _ultimo_cache.get("bajada"), _ultimo_cache.get("subida")
+            else:
+                try:
+                    open(archivo_lock, "w").close()
+                    # Speedtest en thread con timeout 90s para no bloquear el loop
+                    import threading as _th
+                    _st_res = {}
+                    def _run_st():
+                        b, s = medir_velocidad()
+                        _st_res['b'] = b; _st_res['s'] = s
+                    _t = _th.Thread(target=_run_st, daemon=True)
+                    _t.start(); _t.join(timeout=90)
+                    nuevo_b = _st_res.get('b')
+                    nuevo_s = _st_res.get('s')
+                    if nuevo_b is not None:
+                        bajada, subida = nuevo_b, nuevo_s
+                        try:
+                            with open(archivo_velocidad, "w") as f:
+                                json.dump({"ts": ahora, "bajada": bajada, "subida": subida}, f)
+                        except Exception:
+                            pass
+                    else:
+                        # Speedtest falló: usar último valor conocido como fallback
+                        bajada, subida = _ultimo_cache.get("bajada"), _ultimo_cache.get("subida")
+                finally:
+                    try:
+                        os.remove(archivo_lock)
+                    except Exception:
+                        pass
+    
+        separador()
+        if bajada is not None:
+            print(f"  Bajada    {bajada} Mbps  |  Subida  {subida} Mbps")
+    
+        # ── ESCANEO DE RED ──
+        nuevos_dispositivos   = []
+    
+        if ahora - ultima_escaneo >= INTERVALO_ESCANEO:
+            print(f"  [..] Escaneando red local...")
+            ip_local = obtener_ip_local()
+            if ip_local:
+                prefijo = calcular_rango_red(ip_local)
+                ping_sweep(prefijo, (1, 30))
+                time.sleep(1)
+                dispositivos_actuales = escanear_arp()
+    
+                # Detectar dispositivos nuevos
+                for d in dispositivos_actuales:
+                    mac = d["mac"]
+                    if mac not in dispositivos_conocidos:
+                        nuevos_dispositivos.append(d)
+                        dispositivos_conocidos[mac] = d
+    
+                # Guardar conocidos
+                try:
+                    with open(archivo_dispositivos, "w") as f:
+                        json.dump(dispositivos_conocidos, f, indent=2, default=str)
+                except Exception:
+                    pass
+    
+                ultima_escaneo = ahora
+                print(f"  [OK] {len(dispositivos_actuales)} dispositivos en la red" +
+                      (f" · {len(nuevos_dispositivos)} nuevo(s)" if nuevos_dispositivos else ""))
+    
+                for d in dispositivos_actuales:
+                    nuevo = " ★ NUEVO" if d["mac"] in [n["mac"] for n in nuevos_dispositivos] else ""
+                    nombre = d["hostname"] or d["fabricante"]
+                    print(f"       {d['ip']:<16} {nombre:<20} {d['mac']}{nuevo}")
+        else:
+            secs_restantes = int(INTERVALO_ESCANEO - (ahora - ultima_escaneo))
+            print(f"  Red local: próximo escaneo en {secs_restantes}s")
+    
+        # ── ISP ──
+        isp_info = detectar_isp()
+    
+        # ── CÁMARAS / NVR ──
+        camaras_reporte = []
+        if config_camaras:
+            print(f"  [..] Consultando {len(config_camaras)} NVR(s)...")
+            for cam_cfg in config_camaras:
+                estado_cam = consultar_nvr(cam_cfg)
+                camaras_reporte.append(estado_cam)
+                icono   = "✓" if estado_cam["online"] else "✗"
+                canales = f"{estado_cam['canales_grabando']}/{estado_cam['canales_activos']} grabando"
+                disco0  = estado_cam["discos"][0] if estado_cam["discos"] else None
+                disco_s = f" · disco {disco0['usado_pct']}%" if disco0 else ""
+                print(f"       {cam_cfg.get('nombre', cam_cfg['ip'])}: {icono}  {canales}{disco_s}")
+    
+        # ── ESTADO ──
+        if not inet_ok:
+            estado = "SIN INTERNET"
+        elif not gw_ok:
+            estado = "SIN ACCESO AL ROUTER"
+        else:
+            estado = "CONEXION NORMAL"
+    
+        separador()
+        print(f"  ESTADO: {estado}")
+        separador()
+    
+        # ── ARMAR REPORTE ──
+        alertas = []
+        if not inet_ok:
+            alertas.append({"tipo": "internet_offline", "ts": datetime.datetime.now(datetime.timezone.utc).isoformat()})
+        for d in nuevos_dispositivos:
+            alertas.append({
+                "tipo":       "dispositivo_nuevo",
+                "ip":         d["ip"],
+                "mac":        d["mac"],
+                "fabricante": d["fabricante"],
+                "ts":         d["ts"]
+            })
+        ts_ahora = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        for cam in camaras_reporte:
+            if not cam["online"]:
+                alertas.append({"tipo": "nvr_offline", "nvr": cam["nombre"], "ip": cam["ip"], "ts": ts_ahora})
+            for disco in cam.get("discos", []):
+                if disco.get("usado_pct", 0) >= 90:
+                    alertas.append({"tipo": "disco_lleno", "nvr": cam["nombre"],
+                                     "disco": disco["id"], "usado_pct": disco["usado_pct"], "ts": ts_ahora})
+    
+        reporte = {
+            "cliente_id": CLIENTE_ID,
+            "ts":         datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "red": {
+                "gateway_ip":          gw,
+                "gateway_online":      gw_ok,
+                "gateway_latencia":    gw_lat,
+                "internet_online":     inet_ok,
+                "internet_latencia":   inet_lat,
+                "cf_latencia":         cf_lat,
+                "bajada_mbps":         bajada,
+                "subida_mbps":         subida,
+                "estado":              estado,
+                "isp":                 isp_info.get("isp") or None,
+                "ip_publica":          isp_info.get("ip_publica") or None,
+                "dispositivos_red":    dispositivos_actuales if dispositivos_actuales else None,
+                "total_dispositivos":  len(dispositivos_actuales) if dispositivos_actuales else None,
+                "conexion_local":      info_red_local if info_red_local else None
+            },
+            "camaras": camaras_reporte if camaras_reporte else None,
+            "alertas": alertas,
+            "sistema": _armar_sistema(),
+            "agente_version": "2.2"
+        }
+    
+        print("  [..] Enviando a Firebase...", end=" ", flush=True)
+        ok = enviar_firebase(reporte)
+        print("OK ✓" if ok else "ERROR")
+    
+        # ── UPTIME BARRA (cada ciclo, para persistencia en el dashboard) ──
+        if ok:
+            guardar_uptime_barra(inet_ok)
+    
+        # ── HISTORIAL (cada 10 minutos) ──
+        if ok and ahora - ultima_historial >= INTERVALO_HISTORIAL:
+            guardar_historial(reporte)
+            ultima_historial = ahora
+    
+        # ── LIMPIEZA DIARIA ──
+        if ahora - ultima_limpieza >= INTERVALO_LIMPIEZA:
+            print("\n  [..] Ejecutando limpieza diaria...")
+            limpiar_dispositivos_viejos()
+            limpiar_alertas_firebase()
+            limpiar_uptime_barra()
+            reintentar_offline()
+            ultima_limpieza = ahora
+            print("  [OK] Limpieza diaria completada.")
+    
+            print(f"\n  Proxima medicion en {INTERVALO_SEG} segundos...")
+            try:
+                time.sleep(INTERVALO_SEG)
+            except KeyboardInterrupt:
+                print("\n\n  Agente detenido. Hasta luego.")
+                break
     except KeyboardInterrupt:
         print("\n\n  Agente detenido. Hasta luego.")
         break
+    except Exception as _loop_err:
+        print(f"\n  [!] Error inesperado en ciclo #{medicion}: {_loop_err}")
+        print(f"  [i] Reintentando en {INTERVALO_SEG} segundos...")
+        try:
+            time.sleep(INTERVALO_SEG)
+        except KeyboardInterrupt:
+            print("\n\n  Agente detenido. Hasta luego.")
+            break

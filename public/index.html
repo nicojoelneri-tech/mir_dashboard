@@ -127,6 +127,7 @@
   .cam-channels{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px;}
   .cam-ch{display:inline-flex;align-items:center;gap:4px;font-size:11px;border-radius:6px;padding:3px 8px;background:var(--bg3);}
   .cam-ch-on{color:var(--green);}
+  .cam-ch-idle{color:var(--yellow);}
   .cam-ch-off{color:var(--text3);}
 
   /* HISTORIAL */
@@ -629,6 +630,11 @@ const ISP_MAP = [
   { match: /fibertel|cablevision|cablevi/i,    label: 'Fibertel',   url: 'https://www.fibertel.com.ar' },
 ];
 
+function esc(v) {
+  if (v == null) return '—';
+  return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 function resolverIsp(ispStr) {
   if (!ispStr) return null;
   return ISP_MAP.find(e => e.match.test(ispStr)) || null;
@@ -1032,8 +1038,8 @@ function actualizarDashboard(data) {
       resumenCamBody.innerHTML = data.camaras.map(nvr => {
         const dot = nvr.online ? 'dot-green' : 'dot-red';
         return `<div class="stat-row">
-          <span class="stat-key"><span class="dot ${dot}" style="margin-right:5px"></span>${nvr.nombre}</span>
-          <span class="stat-val">${nvr.canales_grabando}/${nvr.canales_activos} grabando</span>
+          <span class="stat-key"><span class="dot ${dot}" style="margin-right:5px"></span>${esc(nvr.nombre)}</span>
+          <span class="stat-val">${esc(nvr.canales_grabando)}/${esc(nvr.canales_activos)} grabando</span>
         </div>`;
       }).join('');
     }
@@ -1138,24 +1144,25 @@ function actualizarCamaras(camaras) {
       const color = d.usado_pct >= 90 ? 'fill-red' : d.usado_pct >= 75 ? 'fill-yellow' : 'fill-green';
       return `<div class="cam-disk">
         <div class="cam-disk-label">
-          <span>Disco ${d.id} <span style="font-size:10px;color:var(--text3)">(${d.estado})</span></span>
-          <span class="cam-disk-val">${d.libre_gb} GB libres de ${d.capacidad_gb} GB &nbsp;·&nbsp; ${d.usado_pct}%</span>
+          <span>Disco ${esc(d.id)} <span style="font-size:10px;color:var(--text3)">(${esc(d.estado)})</span></span>
+          <span class="cam-disk-val">${esc(d.libre_gb)} GB libres de ${esc(d.capacidad_gb)} GB &nbsp;·&nbsp; ${esc(d.usado_pct)}%</span>
         </div>
-        <div class="cam-disk-bar"><div class="cam-disk-fill ${color}" style="width:${d.usado_pct}%"></div></div>
+        <div class="cam-disk-bar"><div class="cam-disk-fill ${color}" style="width:${esc(d.usado_pct)}%"></div></div>
       </div>`;
     }).join('');
 
     const canales = (nvr.canales || []).map(c => {
-      const cls = c.grabando ? 'cam-ch-on' : 'cam-ch-off';
-      const dot = c.grabando ? 'dot-green' : 'dot-red';
-      return `<div class="cam-ch ${cls}"><span class="dot ${dot}"></span>${c.nombre}</div>`;
+      const cls = c.grabando ? 'cam-ch-on' : c.activa ? 'cam-ch-idle' : 'cam-ch-off';
+      const dot = c.grabando ? 'dot-green' : c.activa ? 'dot-yellow' : 'dot-red';
+      const label = c.grabando ? 'grabando' : c.activa ? 'conectada' : 'sin señal';
+      return `<div class="cam-ch ${cls}"><span class="dot ${dot}"></span>${esc(c.nombre)} <span style="opacity:.6">(${label})</span></div>`;
     }).join('');
 
     return `<div class="cam-nvr">
       <div class="cam-nvr-head">
         <div>
-          <div class="cam-nvr-name">${nvr.nombre}${nvr.modelo ? `<span class="cam-nvr-model">${nvr.modelo}</span>` : ''}</div>
-          <div class="cam-nvr-sub">${nvr.canales_grabando}/${nvr.canales_activos} canales grabando</div>
+          <div class="cam-nvr-name">${esc(nvr.nombre)}${nvr.modelo ? `<span class="cam-nvr-model">${esc(nvr.modelo)}</span>` : ''}</div>
+          <div class="cam-nvr-sub">${esc(nvr.canales_activos)} conectados · ${esc(nvr.canales_grabando)} grabando</div>
         </div>
         ${pill}
       </div>
@@ -1239,20 +1246,32 @@ function actualizarSistema(sistema) {
   let html = '';
 
   // CPU
-  if (sistema.cpu_uso_pct !== undefined) {
+  if (sistema.cpu_uso_pct !== undefined || sistema.cpu_modelo) {
     html += '<div style="margin-bottom:14px">';
     html += '<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">CPU</div>';
-    html += fila('Uso actual', sistema.cpu_uso_pct + '%', sistema.cpu_nucleos ? sistema.cpu_nucleos + ' núcleos' : '');
-    html += barra(sistema.cpu_uso_pct);
+    if (sistema.cpu_modelo) html += fila('Modelo', esc(sistema.cpu_modelo));
+    if (sistema.cpu_uso_pct !== undefined) {
+      html += fila('Uso actual', esc(sistema.cpu_uso_pct) + '%', sistema.cpu_nucleos ? esc(sistema.cpu_nucleos) + ' núcleos' : '');
+      html += barra(sistema.cpu_uso_pct);
+    }
     html += '</div>';
   }
 
   // RAM
-  if (sistema.ram_total_gb !== undefined) {
+  if (sistema.ram_total_gb !== undefined || sistema.ram_modulos) {
     html += '<div style="margin-bottom:14px">';
     html += '<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Memoria RAM</div>';
-    html += fila('Uso actual', sistema.ram_uso_pct + '%', sistema.ram_usada_gb + ' GB / ' + sistema.ram_total_gb + ' GB');
-    html += barra(sistema.ram_uso_pct);
+    if (sistema.ram_modulos && sistema.ram_modulos.length) {
+      for (const m of sistema.ram_modulos) {
+        const desc = [m.fabricante !== '—' ? m.fabricante : '', m.modelo !== '—' ? m.modelo : ''].filter(Boolean).join(' ') || '—';
+        const sub = m.velocidad_mhz !== '—' ? m.velocidad_mhz + ' MHz · ' + m.capacidad_gb + ' GB' : m.capacidad_gb + ' GB';
+        html += fila('Módulo', esc(desc), esc(sub));
+      }
+    }
+    if (sistema.ram_total_gb !== undefined) {
+      html += fila('Uso actual', esc(sistema.ram_uso_pct) + '%', esc(sistema.ram_usada_gb) + ' GB / ' + esc(sistema.ram_total_gb) + ' GB');
+      html += barra(sistema.ram_uso_pct);
+    }
     html += '</div>';
   }
 
@@ -1261,7 +1280,8 @@ function actualizarSistema(sistema) {
     html += '<div style="margin-bottom:14px">';
     html += '<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Almacenamiento</div>';
     for (const d of sistema.discos) {
-      html += fila(d.unidad, d.uso_pct + '%', d.libre_gb + ' GB libres de ' + d.total_gb + ' GB');
+      const label = esc(d.unidad) + (d.modelo ? ' — ' + esc(d.modelo) : '');
+      html += fila(label, esc(d.uso_pct) + '%', esc(d.libre_gb) + ' GB libres de ' + esc(d.total_gb) + ' GB');
       html += barra(d.uso_pct);
     }
     html += '</div>';
@@ -1271,7 +1291,7 @@ function actualizarSistema(sistema) {
   if (sistema.os || sistema.uptime_seg !== undefined) {
     html += '<div style="margin-bottom:4px">';
     html += '<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Sistema</div>';
-    if (sistema.os) html += fila('Sistema operativo', sistema.os);
+    if (sistema.os) html += fila('Sistema operativo', esc(sistema.os));
     if (sistema.uptime_seg !== undefined) {
       const h = Math.floor(sistema.uptime_seg / 3600);
       const d = Math.floor(h / 24);
@@ -1310,9 +1330,9 @@ function renderDispositivos(dispositivos) {
         const nombre = d.hostname && d.hostname !== d.ip ? d.hostname : (d.fabricante && d.fabricante !== 'Desconocido' ? d.fabricante : '—');
         const esNuevo = d.nuevo ? '<span class="device-new">NUEVO</span>' : '';
         return `<div class="device-row-net">
-          <span class="device-ip">${d.ip}</span>
-          <span class="device-name">${nombre}${esNuevo}</span>
-          <span class="device-mac">${d.mac || '—'}</span>
+          <span class="device-ip">${esc(d.ip)}</span>
+          <span class="device-name">${esc(nombre)}${esNuevo}</span>
+          <span class="device-mac">${esc(d.mac || '—')}</span>
         </div>`;
       }).join('');
 }

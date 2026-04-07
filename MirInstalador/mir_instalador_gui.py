@@ -106,6 +106,27 @@ def test_firebase(cliente_id, email, contrasena):
     except Exception as e:
         return False, str(e)
 
+def fetch_agente_config(cliente_id, email, contrasena):
+    """Descarga las credenciales del agente para este cliente desde /agentes/{cliente_id}."""
+    try:
+        import urllib.request
+        url  = (f"https://identitytoolkit.googleapis.com/v1/"
+                f"accounts:signInWithPassword?key={FIREBASE_API_KEY}")
+        body = json.dumps({"email": email, "password": contrasena,
+                           "returnSecureToken": True}).encode()
+        req  = urllib.request.Request(url, data=body,
+                    headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            token = json.loads(resp.read().decode())["idToken"]
+        url2 = f"{FIREBASE_URL}/agentes/{cliente_id}.json?auth={token}"
+        with urllib.request.urlopen(url2, timeout=10) as resp2:
+            data = json.loads(resp2.read().decode()) or {}
+        if data.get("agente_email") and data.get("agente_password"):
+            return data["agente_email"], data["agente_password"], ""
+        return None, None, "No se encontraron credenciales para este cliente."
+    except Exception as e:
+        return None, None, str(e)
+
 def fetch_clientes(email, contrasena):
     """Obtiene la lista de clientes desde Firebase /usuarios/. Retorna (lista, error)."""
     try:
@@ -751,7 +772,7 @@ class Instalador:
 
     def _run_install(self):
         import shutil
-        pasos = 8
+        pasos = 9
         paso_val = 100 // pasos
 
         # 0. Detener agente anterior si está corriendo
@@ -791,40 +812,55 @@ class Instalador:
             self._log_write(f"  Error al copiar archivos: {e}")
         self._set_prog(paso_val * 2)
 
-        # 3. Guardar config
+        # 3. Obtener credenciales del agente para este cliente
+        self._log_write("▶ Obteniendo credenciales del agente...")
+        cliente_id = self.v_id.get()
+        agente_email, agente_pass, agente_err = fetch_agente_config(
+            cliente_id, AGENTE_EMAIL, AGENTE_CONTRASENA)
+        if agente_email:
+            self._log_write(f"  Credenciales obtenidas para {agente_email} ✓")
+        else:
+            self._log_write(f"  Advertencia: {agente_err} — usando agente compartido")
+            agente_email = AGENTE_EMAIL
+            agente_pass  = AGENTE_CONTRASENA
+        self._set_prog(paso_val * 3)
+
+        # 4. Guardar config
         self._log_write("▶ Guardando configuración del cliente...")
         cfg = {
-            "cliente_id":        self.v_id.get(),
+            "cliente_id":        cliente_id,
             "firebase_url":      FIREBASE_URL,
             "firebase_api_key":  FIREBASE_API_KEY,
+            "agente_email":      agente_email,
+            "agente_password":   agente_pass,
             "intervalo_seg":     60,
             "intervalo_escaneo": 300
         }
         with open(os.path.join(INSTALL_DIR, "mir_config.json"), "w", encoding="utf-8") as fp:
             json.dump(cfg, fp, indent=2, ensure_ascii=False)
         self._log_write("  mir_config.json guardado ✓")
-        self._set_prog(paso_val * 3)
+        self._set_prog(paso_val * 4)
 
-        # 4. Guardar cámaras
+        # 5. Guardar cámaras
         self._log_write("▶ Guardando configuración de cámaras...")
         cams = self.camaras if self.v_tiene_cam.get() else []
         with open(os.path.join(INSTALL_DIR, "mir_camaras.json"), "w", encoding="utf-8") as fp:
             json.dump(cams, fp, indent=2, ensure_ascii=False)
         self._log_write(f"  mir_camaras.json guardado ({len(cams)} equipo(s)) ✓")
-        self._set_prog(paso_val * 4)
+        self._set_prog(paso_val * 5)
 
-        # 5. Test Firebase con credenciales del agente compartido
+        # 6. Test Firebase con credenciales del agente
         self._log_write("▶ Verificando conexión a Firebase...")
         ok_fb, err_fb = test_firebase(
-            self.v_id.get(), AGENTE_EMAIL, AGENTE_CONTRASENA)
+            cliente_id, agente_email, agente_pass)
         if ok_fb:
             self._log_write("  Conexión a Firebase: OK ✓")
         else:
             self._log_write(f"  Firebase: advertencia — {err_fb[:80]}")
             self._log_write("  (El agente reintentará automáticamente al iniciar)")
-        self._set_prog(paso_val * 5)
+        self._set_prog(paso_val * 6)
 
-        # 6. Excluir de Windows Defender (reduce falsos positivos)
+        # 7. Excluir de Windows Defender (reduce falsos positivos)
         self._log_write("▶ Configurando exclusión en Windows Defender...")
         try:
             r = subprocess.run(
@@ -838,9 +874,9 @@ class Instalador:
                 self._log_write("  Defender: sin permisos de admin (no crítico)")
         except Exception:
             self._log_write("  Defender: omitido (no disponible en este sistema)")
-        self._set_prog(paso_val * 6)
+        self._set_prog(paso_val * 7)
 
-        # 7. Autostart
+        # 8. Autostart
         if self.v_autostart.get():
             self._log_write("▶ Configurando inicio automático...")
             ok_at, metodo = configurar_autostart(self.v_id.get(), INSTALL_DIR)

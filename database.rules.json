@@ -1,16 +1,50 @@
 {
   "rules": {
+
     "clientes": {
-      ".read":  "auth != null",
-      ".write": "auth != null"
+      ".read":  "auth != null && auth.token.email === 'admin@mirsoluciones.com'",
+      "$clienteId": {
+        ".read":  "auth != null && (auth.token.email === ($clienteId + '@clientes.mir.internal') || auth.token.email === ('agente_' + $clienteId + '@mir-agentes.internal') || auth.token.email === 'agente@mir-soluciones.internal')",
+        ".write": "auth != null && (auth.token.email === 'admin@mirsoluciones.com' || auth.token.email === ('agente_' + $clienteId + '@mir-agentes.internal') || auth.token.email === 'agente@mir-soluciones.internal')"
+      }
     },
+
     "usuarios": {
-      ".read":  "auth != null",
-      ".write": "auth != null"
+      ".read":  "auth != null && auth.token.email === 'admin@mirsoluciones.com'",
+      ".write": "auth != null && auth.token.email === 'admin@mirsoluciones.com'"
     },
+
     "admin_config": {
       ".read":  "auth != null && auth.token.email === 'admin@mirsoluciones.com'",
       ".write": "auth != null && auth.token.email === 'admin@mirsoluciones.com'"
+    },
+
+    "uptime_barra": {
+      "$clienteId": {
+        ".read":  "auth != null && (auth.token.email === ($clienteId + '@clientes.mir.internal') || auth.token.email === 'admin@mirsoluciones.com' || auth.token.email === ('agente_' + $clienteId + '@mir-agentes.internal') || auth.token.email === 'agente@mir-soluciones.internal')",
+        ".write": "auth != null && (auth.token.email === 'admin@mirsoluciones.com' || auth.token.email === ('agente_' + $clienteId + '@mir-agentes.internal') || auth.token.email === 'agente@mir-soluciones.internal')"
+      }
+    },
+
+    "historial": {
+      "$clienteId": {
+        ".read":  "auth != null && (auth.token.email === ($clienteId + '@clientes.mir.internal') || auth.token.email === 'admin@mirsoluciones.com' || auth.token.email === ('agente_' + $clienteId + '@mir-agentes.internal') || auth.token.email === 'agente@mir-soluciones.internal')",
+        ".write": "auth != null && (auth.token.email === 'admin@mirsoluciones.com' || auth.token.email === ('agente_' + $clienteId + '@mir-agentes.internal') || auth.token.email === 'agente@mir-soluciones.internal')"
+      }
+    },
+
+    "agentes": {
+      ".read":  "auth != null && auth.token.email === 'agente@mir-soluciones.internal'",
+      ".write": "auth != null && auth.token.email === 'admin@mirsoluciones.com'"
+    },
+
+    "install_tokens": {
+      ".read":  "auth != null && auth.token.email === 'admin@mirsoluciones.com'",
+      ".write": "auth != null && auth.token.email === 'admin@mirsoluciones.com'",
+      "$token": {
+        ".read": "auth != null && auth.token.email === 'agente@mir-soluciones.internal'"
+      }
     }
+
   }
 }

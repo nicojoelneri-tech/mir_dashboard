@@ -41,7 +41,7 @@ python mir_agente.py
 firebase deploy --only hosting
 
 # Setup inicial (instala Node, Firebase CLI, hace login y deploy)
-mir_hosting_setup.bat   # solo Windows
+scripts\mir_hosting_setup.bat   # solo Windows
 ```
 
 ## Dependencias del agente Python
@@ -53,6 +53,30 @@ speedtest-cli
 ```
 
 El agente las instala automáticamente si faltan (auto-pip dentro del script).
+
+## Estructura del proyecto
+
+```
+├── mir_agente.py              # Agente principal — loop de monitoreo
+├── mir_instalador_gui.py      # Instalador GUI (Tkinter wizard)
+├── mir_lanzador.bat           # Bootstrap: instala Python + lanza instalador
+├── mir_desinstalador.bat      # Desinstalador del agente
+├── mir_inicio.bat             # Inicia el agente en background (pythonw)
+├── Logo gris.png              # Logo para el instalador GUI
+├── public/                    # Firebase Hosting
+│   ├── index.html             # Dashboard del cliente
+│   └── mir-admin.html         # Panel de administración
+├── MirInstalador/             # Paquete de distribución (se zipea para instalar)
+├── scripts/                   # Utilidades de desarrollo (no producción)
+│   ├── mir_add_usuario.py     # Crear usuarios Firebase manualmente
+│   ├── mir_mock_nvr.py        # Servidores mock NVR para testing
+│   ├── mir_mock_iniciar.bat   # Lanza los mocks
+│   └── mir_hosting_setup.bat  # Setup inicial Firebase Hosting
+├── docs/                      # Documentación y reportes de investigación
+├── firebase.json              # Config Firebase Hosting
+├── database.rules.json        # Reglas Firebase Realtime DB (producción)
+└── .firebaserc                # Proyecto Firebase: mir-soluciones-35859
+```
 
 ## Archivos clave
 
@@ -114,6 +138,7 @@ INTERVALO_ESCANEO = 300   # frecuencia de scan ARP
 
 ## Tareas pendientes
 
-1. 🔲 **Monitoreo de electricidad** — Agregar soporte para sensor de voltaje/tensión en el agente. Mostrar voltaje actual en dashboard del cliente y detectar bajadas de tensión, alertar cuando cae por debajo de umbral.
-2. 🔲 **Instalador/paquete final** — Reemplazar la instalación manual por un paquete intuitivo para el técnico instalador: creación de usuario, configuración de DVR/NVR, credenciales, todo en un flujo guiado (wizard).
-3. 🔲 **Gestión de usuarios en admin** — Mauro debe poder ver usuarios de clientes en el panel admin (sin ver claves), con opción de blanquear/resetear contraseña cuando el cliente lo requiera.
+1. ✅ **Instalador/paquete final** — Wizard GUI Tkinter con tokens de instalación, dropdown clientes, config DVR/NVR. Completado.
+2. ✅ **Gestión de usuarios en admin** — Panel admin con crear/borrar usuarios, resetear contraseña. Completado.
+3. 🔲 **Testing DVR real** — Probar con DVR/NVR real en Reca Ramos Mejía (hardware de Mauro).
+4. 🔲 **Seguridad** — Fix XSS (innerHTML → textContent), credencial agente compartida → por cliente.
