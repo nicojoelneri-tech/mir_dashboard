@@ -81,6 +81,39 @@ def firebase_get(path):
         log(f"[!] Error leyendo Firebase {path}: {e}")
         return None
 
+def firebase_put(path, data):
+    token = obtener_token_firebase()
+    if not token:
+        return False
+    try:
+        body = json.dumps(data).encode()
+        req  = urllib.request.Request(
+            f"{FIREBASE_URL}/{path}.json?auth={token}",
+            data=body, method="PUT",
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=10) as r:
+            r.read()
+        return True
+    except Exception as e:
+        log(f"[!] Error escribiendo Firebase {path}: {e}")
+        return False
+
+# ── Persistencia de estado de alertas ─────────────────────────────────────────
+ESTADO_PATH = "admin_config/alertas_estado"
+
+def guardar_estado():
+    firebase_put(ESTADO_PATH, _estado_clientes)
+
+def cargar_estado():
+    global _estado_clientes
+    data = firebase_get(ESTADO_PATH)
+    if isinstance(data, dict):
+        _estado_clientes = data
+        log(f"Estado de alertas restaurado ({len(data)} cliente(s)) ✓")
+    else:
+        log("Sin estado previo de alertas — empezando limpio.")
+
 # ── Telegram ──────────────────────────────────────────────────────────────────
 def telegram_send(mensaje):
     if not _tg_token or not _tg_chat_id:
@@ -236,6 +269,8 @@ def loop_monitoreo():
         return
     log("Autenticado ✓")
 
+    cargar_estado()
+
     if cargar_config_telegram():
         log(f"Telegram configurado — chat_id: {_tg_chat_id} ✓")
         telegram_send("🟢 <b>Mir Alertas iniciado</b>\nMonitoreando todos los clientes.")
@@ -280,6 +315,7 @@ def loop_monitoreo():
                 log("Sin datos de clientes.")
 
             _ultimo_ciclo = datetime.datetime.now().isoformat()
+            guardar_estado()
 
         except Exception as e:
             log(f"[!] Error en ciclo: {e}")
