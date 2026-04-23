@@ -163,6 +163,12 @@ def revisar_clientes(clientes_data):
         return
     _clientes_count = len(clientes_data)
 
+    # Acumular cambios de conectividad para enviarlos agrupados al final
+    sin_conexion  = []   # [(nombre, mins, chat_id_cli)]
+    con_conexion  = []   # [(nombre, chat_id_cli)]
+    sin_internet  = []   # [(nombre, chat_id_cli)]
+    con_internet  = []   # [(nombre, chat_id_cli)]
+
     for cliente_id, datos in clientes_data.items():
         rep = (datos or {}).get("ultimo_reporte") or {}
         red = rep.get("red") or {}
@@ -180,29 +186,21 @@ def revisar_clientes(clientes_data):
         tg_cfg = (datos or {}).get("telegram") or {}
         chat_id_cli = str(tg_cfg["chat_id"]) if tg_cfg.get("chat_id") else None
 
-        # Conectividad del agente
+        # Acumular cambios de conectividad (no enviar aún)
         if online_prev is None:
             pass  # primera vez — no alertar
         elif online_prev and not online_ahora:
-            telegram_send(
-                f"🔴 <b>{nombre}</b> — sin conexión\n"
-                f"Sin reporte hace {mins:.0f} min.",
-                chat_id_cli
-            )
+            sin_conexion.append((nombre, mins, chat_id_cli))
         elif not online_prev and online_ahora:
-            telegram_send(f"🟢 <b>{nombre}</b> — conexión restaurada", chat_id_cli)
+            con_conexion.append((nombre, chat_id_cli))
         elif online_ahora and inet_prev is not None:
             if inet_prev and not inet_ok_ahora:
-                telegram_send(
-                    f"🟡 <b>{nombre}</b> — sin internet\n"
-                    f"El equipo está encendido pero sin acceso a internet.",
-                    chat_id_cli
-                )
+                sin_internet.append((nombre, chat_id_cli))
             elif not inet_prev and inet_ok_ahora:
-                telegram_send(f"🟢 <b>{nombre}</b> — internet restaurado", chat_id_cli)
+                con_internet.append((nombre, chat_id_cli))
 
-        # DVR / cámaras
-        camaras     = rep.get("camaras") or []
+        # DVR / cámaras — siempre individuales (son alertas de dispositivo específico)
+        camaras      = rep.get("camaras") or []
         dvr_ok_ahora = all(c.get("online") for c in camaras) if camaras else True
         dvr_ok_prev  = estado_prev.get("dvr_ok", True)
 
@@ -217,7 +215,6 @@ def revisar_clientes(clientes_data):
             elif not dvr_ok_prev and dvr_ok_ahora:
                 telegram_send(f"📷 <b>{nombre}</b> — DVR/NVR restaurado", chat_id_cli)
 
-            # Disco lleno
             for cam in camaras:
                 for disco in (cam.get("discos") or []):
                     pct   = disco.get("usado_pct", 0)
@@ -238,6 +235,39 @@ def revisar_clientes(clientes_data):
             "inet_ok": inet_ok_ahora,
             "dvr_ok":  dvr_ok_ahora,
         }
+
+    # ── Enviar alertas de conectividad agrupadas ──────────────────────────────
+    # Un cliente: mensaje individual con su chat_id propio.
+    # Múltiples clientes con el mismo evento: un solo mensaje global.
+    if len(sin_conexion) == 1:
+        n, m, cid = sin_conexion[0]
+        telegram_send(f"🔴 <b>{n}</b> — sin conexión\nSin reporte hace {m:.0f} min.", cid)
+    elif len(sin_conexion) > 1:
+        nombres = ", ".join(f"<b>{n}</b>" for n, _, _ in sin_conexion)
+        telegram_send(f"🔴 Múltiples clientes sin conexión\n{nombres}")
+
+    if len(con_conexion) == 1:
+        n, cid = con_conexion[0]
+        telegram_send(f"🟢 <b>{n}</b> — conexión restaurada", cid)
+    elif len(con_conexion) > 1:
+        nombres = ", ".join(f"<b>{n}</b>" for n, _ in con_conexion)
+        telegram_send(f"🟢 Conexión restaurada: {nombres}")
+
+    if len(sin_internet) == 1:
+        n, cid = sin_internet[0]
+        telegram_send(
+            f"🟡 <b>{n}</b> — sin internet\n"
+            f"El equipo está encendido pero sin acceso a internet.", cid)
+    elif len(sin_internet) > 1:
+        nombres = ", ".join(f"<b>{n}</b>" for n, _ in sin_internet)
+        telegram_send(f"🟡 Múltiples clientes sin internet\n{nombres}")
+
+    if len(con_internet) == 1:
+        n, cid = con_internet[0]
+        telegram_send(f"🟢 <b>{n}</b> — internet restaurado", cid)
+    elif len(con_internet) > 1:
+        nombres = ", ".join(f"<b>{n}</b>" for n, _ in con_internet)
+        telegram_send(f"🟢 Internet restaurado: {nombres}")
 
 # ── HTTP server (para que Render no mate el proceso) ─────────────────────────
 class HealthHandler(BaseHTTPRequestHandler):
