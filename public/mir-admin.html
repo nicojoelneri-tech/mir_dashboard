@@ -830,6 +830,11 @@ function cargarClientes() {
     document.getElementById('topbar-sub').textContent =
       'Última actualización: ' + new Date().toLocaleTimeString();
   });
+
+  // Re-evaluar frescura cada 30s aunque Firebase no pushee nuevos datos
+  setInterval(() => {
+    if (Object.keys(clientesData).length > 0) renderClientes(clientesData);
+  }, 30000);
 }
 
 function _alertaKey(id) {
