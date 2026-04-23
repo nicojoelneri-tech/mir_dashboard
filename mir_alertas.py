@@ -229,6 +229,29 @@ def revisar_clientes(clientes_data):
                     elif pct < DISCO_PCT_ALERTA:
                         _estado_clientes.setdefault(cliente_id, {}).pop(clave, None)
 
+                # Señal por canal — solo cuando el DVR está online (si el DVR se cae,
+                # los canales quedan "inactivos" pero eso ya lo cubre la alerta de DVR)
+                if cam.get("online"):
+                    for canal in (cam.get("canales") or []):
+                        clave_ch    = f"ch_{cliente_id}_{cam['nombre']}_{canal['id']}"
+                        activa_ahora = canal.get("activa", False)
+                        activa_prev  = estado_prev.get(clave_ch)
+                        if activa_prev is None:
+                            pass  # primera vez — no alertar
+                        elif activa_prev and not activa_ahora:
+                            telegram_send(
+                                f"📷 <b>{nombre}</b> — cámara sin señal\n"
+                                f"DVR: {cam['nombre']} | Canal {canal['id']}",
+                                chat_id_cli
+                            )
+                        elif not activa_prev and activa_ahora:
+                            telegram_send(
+                                f"📷 <b>{nombre}</b> — cámara restaurada\n"
+                                f"DVR: {cam['nombre']} | Canal {canal['id']}",
+                                chat_id_cli
+                            )
+                        _estado_clientes.setdefault(cliente_id, {})[clave_ch] = activa_ahora
+
         _estado_clientes[cliente_id] = {
             **_estado_clientes.get(cliente_id, {}),
             "online":  online_ahora,
