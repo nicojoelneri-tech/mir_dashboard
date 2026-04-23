@@ -23,7 +23,7 @@ import xml.etree.ElementTree as ET
 # ─────────────────────────────────────────────
 #  CONFIG  (defaults — se sobreescriben con mir_config.json)
 # ─────────────────────────────────────────────
-AGENTE_VERSION      = "2.2"
+AGENTE_VERSION      = "2.3"
 CLIENTE_ID          = "clientedemo"
 FIREBASE_URL        = "https://mir-soluciones-35859-default-rtdb.firebaseio.com"
 FIREBASE_API_KEY    = "AIzaSyAiV60g7n6UdiHwXZ8S0dTbIBBk4bxdRZs"  # Web API key (público)
