@@ -731,19 +731,35 @@ def ping(host, intentos=3):
         return False, None
 
 def detectar_gateway():
-    try:
-        if platform.system().lower() == "windows":
+    if platform.system().lower() == "windows":
+        # Intento 1: Get-NetRoute (PS 3.0+, Win8+)
+        try:
             cmd = ('powershell -NoProfile -Command "(Get-NetRoute -DestinationPrefix \'0.0.0.0/0\' | Sort-Object RouteMetric | Select-Object -First 1).NextHop"')
             out = subprocess.check_output(cmd, shell=True, text=True, timeout=5, creationflags=_NO_WINDOW).strip()
             if out and re.match(r"^\d+\.\d+\.\d+\.\d+$", out):
                 return out
-        else:
+        except Exception:
+            pass
+        # Intento 2: ipconfig (funciona en Win7 y superiores)
+        try:
+            out = subprocess.check_output(["ipconfig"], text=True, timeout=5,
+                                          creationflags=_NO_WINDOW, errors="replace")
+            for linea in out.splitlines():
+                l = linea.strip().lower()
+                if "gateway" in l or "puerta de enlace" in l:
+                    m = re.search(r"\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b", linea)
+                    if m:
+                        return m.group(1)
+        except Exception:
+            pass
+    else:
+        try:
             out = subprocess.check_output(["ip", "route"], text=True)
             for linea in out.splitlines():
                 if linea.startswith("default"):
                     return linea.split()[2]
-    except Exception:
-        pass
+        except Exception:
+            pass
     return "192.168.1.1"
 
 def medir_velocidad():
