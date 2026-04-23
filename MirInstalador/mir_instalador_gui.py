@@ -24,7 +24,10 @@ AGENT_FILE       = os.path.join(DIR, "mir_agente.py")
 CONFIG_FILE      = os.path.join(DIR, "mir_config.json")
 CAMARAS_FILE     = os.path.join(DIR, "mir_camaras.json")
 DESINT_FILE      = os.path.join(DIR, "mir_desinstalador.bat")
+ACTUALIZADOR_FILE = os.path.join(DIR, "mir_actualizador.bat")
+NSSM_FILE        = os.path.join(DIR, "nssm.exe")
 INSTALL_DIR      = r"C:\Program Files\Mir Soluciones"
+SERVICE_NAME     = "MirAgente"
 
 # ── Paleta ────────────────────────────────────────────────────────────────────
 C_HEADER  = "#1a2a4a"
@@ -127,6 +130,33 @@ def fetch_agente_config(cliente_id, email, contrasena):
     except Exception as e:
         return None, None, str(e)
 
+def fetch_token_config(token):
+    """Lee el token de instalación desde Firebase.
+    Retorna (cliente_id, agente_email, agente_password, error)."""
+    try:
+        import urllib.request
+        url  = (f"https://identitytoolkit.googleapis.com/v1/"
+                f"accounts:signInWithPassword?key={FIREBASE_API_KEY}")
+        body = json.dumps({"email": AGENTE_EMAIL, "password": AGENTE_CONTRASENA,
+                           "returnSecureToken": True}).encode()
+        req  = urllib.request.Request(url, data=body,
+                    headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            fb_token = json.loads(resp.read().decode())["idToken"]
+        url2 = f"{FIREBASE_URL}/install_tokens/{token}.json?auth={fb_token}"
+        with urllib.request.urlopen(url2, timeout=10) as resp2:
+            data = json.loads(resp2.read().decode()) or {}
+        if not data:
+            return None, None, None, "Token no encontrado o ya expirado."
+        cliente_id   = data.get("cliente_id", "")
+        agente_email = data.get("agente_email") or AGENTE_EMAIL
+        agente_pass  = data.get("agente_password") or AGENTE_CONTRASENA
+        if not cliente_id:
+            return None, None, None, "Token inválido (sin cliente_id)."
+        return cliente_id, agente_email, agente_pass, ""
+    except Exception as e:
+        return None, None, None, str(e)
+
 def fetch_clientes(email, contrasena):
     """Obtiene la lista de clientes desde Firebase /usuarios/. Retorna (lista, error)."""
     try:
@@ -184,25 +214,54 @@ def test_camara(cfg):
 def configurar_autostart(cliente_id, install_dir=None):
     if install_dir is None:
         install_dir = DIR
-    agent_file = os.path.join(install_dir, "mir_agente.py")
+    agente = os.path.join(install_dir, "mir_agente.py")
     pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
     if not os.path.exists(pythonw):
         pythonw = sys.executable
+    nssm = os.path.join(install_dir, "nssm.exe")
+
+    # Intento 1: Windows Service via NSSM (requiere permisos de admin)
+    if os.path.exists(nssm):
+        try:
+            # Limpiar servicio previo si existe
+            subprocess.run([nssm, "stop", SERVICE_NAME], capture_output=True, timeout=10)
+            subprocess.run([nssm, "remove", SERVICE_NAME, "confirm"], capture_output=True, timeout=10)
+            # Instalar servicio
+            r = subprocess.run([nssm, "install", SERVICE_NAME, pythonw],
+                               capture_output=True, text=True, timeout=10)
+            if r.returncode == 0:
+                subprocess.run([nssm, "set", SERVICE_NAME, "AppParameters", f'"{agente}"'],
+                               capture_output=True, timeout=10)
+                subprocess.run([nssm, "set", SERVICE_NAME, "AppDirectory", install_dir],
+                               capture_output=True, timeout=10)
+                subprocess.run([nssm, "set", SERVICE_NAME, "DisplayName", "Mir Agente de Monitoreo"],
+                               capture_output=True, timeout=10)
+                subprocess.run([nssm, "set", SERVICE_NAME, "Description",
+                               "Agente de monitoreo de red - Mir Soluciones"],
+                               capture_output=True, timeout=10)
+                subprocess.run([nssm, "set", SERVICE_NAME, "Start", "SERVICE_AUTO_START"],
+                               capture_output=True, timeout=10)
+                subprocess.run([nssm, "set", SERVICE_NAME, "AppEnvironmentExtra",
+                               "PYTHONIOENCODING=utf-8"],
+                               capture_output=True, timeout=10)
+                # Reinicio automático en caso de falla: 5s, 10s, 30s
+                subprocess.run([nssm, "set", SERVICE_NAME, "AppRestartDelay", "5000"],
+                               capture_output=True, timeout=10)
+                subprocess.run([nssm, "start", SERVICE_NAME], capture_output=True, timeout=15)
+                return True, "Windows Service con reinicio automático en falla"
+        except Exception:
+            pass  # sin admin u otro error → fallback
+
+    # Intento 2: Programador de tareas via wscript (sin ventana)
     bat = os.path.join(install_dir, "mir_inicio.bat")
     vbs = os.path.join(install_dir, "mir_inicio.vbs")
-
-    # Bat que lanza pythonw (sin ventana de consola)
     with open(bat, "w", encoding="utf-8") as f:
-        f.write(f'@echo off\r\ncd /d "{install_dir}"\r\nset PYTHONIOENCODING=utf-8\r\n"{pythonw}" "{agent_file}"\r\n')
-
-    # VBS que lanza el bat completamente invisible (sin ventana CMD)
+        f.write(f'@echo off\r\ncd /d "{install_dir}"\r\nset PYTHONIOENCODING=utf-8\r\n"{pythonw}" "{agente}"\r\n')
     with open(vbs, "w", encoding="utf-8") as f:
         f.write(
             f'Set sh = CreateObject("WScript.Shell")\r\n'
             f'sh.Run "cmd.exe /c ""{bat}""", 0, False\r\n'
         )
-
-    # Intento 1: Programador de tareas via wscript (sin ventana)
     try:
         r = subprocess.run(
             ["schtasks", "/create", "/tn", f"MirAgente_{cliente_id}",
@@ -210,11 +269,11 @@ def configurar_autostart(cliente_id, install_dir=None):
             capture_output=True, text=True
         )
         if r.returncode == 0:
-            return True, "Programador de tareas de Windows"
+            return True, "Programador de tareas de Windows (fallback)"
     except Exception:
         pass
 
-    # Intento 2: VBS en carpeta Inicio (fallback)
+    # Intento 3: VBS en carpeta Inicio
     try:
         startup = os.path.join(
             os.environ.get("APPDATA", ""),
@@ -226,7 +285,7 @@ def configurar_autostart(cliente_id, install_dir=None):
                 f'Set sh = CreateObject("WScript.Shell")\r\n'
                 f'sh.Run "cmd.exe /c ""{bat}""", 0, False\r\n'
             )
-        return True, "Carpeta Inicio de Windows"
+        return True, "Carpeta Inicio de Windows (fallback)"
     except Exception as e:
         return False, str(e)
 
@@ -249,6 +308,8 @@ class Instalador:
 
         # Variables de formulario
         self.v_id        = tk.StringVar()
+        self._agente_email_resuelto = None
+        self._agente_pass_resuelto  = None
         self.v_cam_nom   = tk.StringVar()
         self.v_cam_marca = tk.StringVar(value="hikvision")
         self.v_cam_ip    = tk.StringVar()
@@ -403,9 +464,9 @@ class Instalador:
                 messagebox.showwarning("Verificación pendiente",
                     "Hacé click en 'Verificar e instalar' antes de continuar.")
                 return False
-        if page == 2:  # Cliente
-            if not self.v_id.get().strip():
-                messagebox.showwarning("Dato requerido", "Ingresá el ID del cliente.")
+        if page == 2:  # Token
+            if not self._token_validado or not self.v_id.get().strip():
+                messagebox.showwarning("Token requerido", "Verificá el token antes de continuar.")
                 return False
         return True
 
@@ -541,77 +602,66 @@ class Instalador:
             self.root.after(0, lambda: self._lbl_req_ok.config(
                 text="✗ Corregí los errores y volvé a verificar.", fg=C_ROJO))
 
-    # ── Página 3: Datos del cliente ───────────────────────────────────────────
+    # ── Página 3: Token de instalación ───────────────────────────────────────
     def _pg_cliente(self):
-        self._clientes_map = {}  # display label → cliente_id
+        self._token_validado = False
 
         f = tk.Frame(self.content, bg=C_BG, padx=32, pady=16)
         f.pack(fill="both", expand=True)
-        tk.Label(f, text="Seleccionar cliente", font=(FNT, 12, "bold"),
+        tk.Label(f, text="Token de instalación", font=(FNT, 12, "bold"),
                  fg=C_TEXT, bg=C_BG).pack(anchor="w")
-        tk.Label(f, text="Elegí el cliente desde la lista registrada en el panel de administración.",
-                 font=(FNT, 9), fg=C_GRAY, bg=C_BG).pack(anchor="w", pady=(2,12))
+        tk.Label(f, text="Ingresá el token generado desde el panel de administración (válido 72 hs).",
+                 font=(FNT, 9), fg=C_GRAY, bg=C_BG).pack(anchor="w", pady=(2,16))
 
-        tk.Label(f, text="Cliente *", font=(FNT, 9, "bold"),
+        tk.Label(f, text="Token *", font=(FNT, 9, "bold"),
                  fg=C_TEXT, bg=C_BG).pack(anchor="w", pady=(0,2))
 
-        self._v_combo = tk.StringVar()
-        self._combo = ttk.Combobox(f, textvariable=self._v_combo,
-                                    font=(FNT, 10), state="readonly")
-        self._combo.pack(fill="x", ipady=4)
-        self._combo.bind("<<ComboboxSelected>>", self._on_cliente_seleccionado)
+        self._v_token = tk.StringVar()
+        tk.Entry(f, textvariable=self._v_token, font=("Consolas", 10),
+                 relief="solid", bd=1).pack(fill="x", ipady=6)
 
-        self._lbl_cliente_st = tk.Label(f, text="Cargando lista...",
-                                         font=(FNT, 9), fg=C_GRAY, bg=C_BG)
-        self._lbl_cliente_st.pack(anchor="w", pady=(4,0))
+        self._lbl_token_st = tk.Label(f, text="", font=(FNT, 9), fg=C_GRAY, bg=C_BG)
+        self._lbl_token_st.pack(anchor="w", pady=(6,0))
 
-        tk.Label(f, text="ID asignado:", font=(FNT, 9, "bold"),
-                 fg=C_TEXT, bg=C_BG).pack(anchor="w", pady=(16,2))
+        tk.Button(f, text="▶  Verificar token", font=(FNT, 10, "bold"),
+                  fg=C_WHITE, bg=C_HEADER, relief="flat", bd=0,
+                  cursor="hand2", padx=16, pady=8,
+                  command=lambda: threading.Thread(
+                      target=self._verificar_token, daemon=True).start()
+                  ).pack(pady=(14,0), anchor="w")
+
+        tk.Label(f, text="Cliente asignado:", font=(FNT, 9, "bold"),
+                 fg=C_TEXT, bg=C_BG).pack(anchor="w", pady=(20,2))
         tk.Entry(f, textvariable=self.v_id, font=("Consolas", 10),
                  relief="solid", bd=1, fg=C_HEADER,
                  state="readonly").pack(fill="x", ipady=5)
 
-        btn_row = tk.Frame(f, bg=C_BG)
-        btn_row.pack(anchor="w", pady=(10,0))
-        tk.Button(btn_row, text="Recargar lista", font=(FNT, 9),
-                  fg=C_WHITE, bg="#374151", relief="flat", bd=0,
-                  padx=10, pady=4, cursor="hand2",
-                  command=self._cargar_clientes).pack(side="left")
+        self.btn_next.config(state="disabled")
 
-        # carga automática al entrar a la página
-        self.root.after(100, self._cargar_clientes)
-
-    def _cargar_clientes(self):
-        self._lbl_cliente_st.config(text="Cargando lista...", fg=C_GRAY)
-        self._combo.config(state="disabled")
-        def run():
-            clientes, err = fetch_clientes(AGENTE_EMAIL, AGENTE_CONTRASENA)
-            def update():
-                if err or not clientes:
-                    msg = f"Error al conectar: {err[:60]}" if err else "No hay clientes registrados."
-                    self._lbl_cliente_st.config(text=msg, fg=C_ROJO)
-                    self._combo.config(state="readonly")
-                    return
-                self._clientes_map = {
-                    f"{c['nombre']}  ({c['cliente_id']})": c["cliente_id"]
-                    for c in clientes
-                }
-                self._combo["values"] = list(self._clientes_map.keys())
-                self._combo.config(state="readonly")
-                self._lbl_cliente_st.config(
-                    text=f"{len(clientes)} cliente(s) encontrado(s).", fg=C_VERDE)
-                # si ya había uno seleccionado, mantenerlo
-                if self.v_id.get():
-                    for label, cid in self._clientes_map.items():
-                        if cid == self.v_id.get():
-                            self._v_combo.set(label)
-                            break
-            self.root.after(0, update)
-        threading.Thread(target=run, daemon=True).start()
-
-    def _on_cliente_seleccionado(self, event):
-        label = self._v_combo.get()
-        self.v_id.set(self._clientes_map.get(label, ""))
+    def _verificar_token(self):
+        token = self._v_token.get().strip()
+        if not token:
+            self.root.after(0, lambda: self._lbl_token_st.config(
+                text="Ingresá el token.", fg=C_ROJO))
+            return
+        self.root.after(0, lambda: self._lbl_token_st.config(
+            text="Verificando...", fg=C_GRAY))
+        cliente_id, agente_email, agente_pass, err = fetch_token_config(token)
+        if err or not cliente_id:
+            msg = err or "Token inválido."
+            self.root.after(0, lambda: self._lbl_token_st.config(
+                text=f"✗ {msg}", fg=C_ROJO))
+            self._token_validado = False
+            return
+        self._agente_email_resuelto = agente_email
+        self._agente_pass_resuelto  = agente_pass
+        self._token_validado = True
+        self.root.after(0, lambda: [
+            self.v_id.set(cliente_id),
+            self._lbl_token_st.config(
+                text=f"✓ Cliente: {cliente_id}", fg=C_VERDE),
+            self.btn_next.config(state="normal")
+        ])
 
     # ── Página 4: Cámaras / NVR ───────────────────────────────────────────────
     def _pg_camaras(self):
@@ -778,17 +828,22 @@ class Instalador:
         # 0. Detener agente anterior si está corriendo
         self._log_write("▶ Deteniendo agente anterior (si existe)...")
         try:
+            # Intentar detener servicio Windows primero
+            nssm_prev = os.path.join(INSTALL_DIR, "nssm.exe")
+            if not os.path.exists(nssm_prev):
+                nssm_prev = NSSM_FILE
+            if os.path.exists(nssm_prev):
+                subprocess.run([nssm_prev, "stop", SERVICE_NAME],
+                               capture_output=True, timeout=10)
+            # También matar pythonw por compatibilidad con instalaciones previas
             r = subprocess.run(
                 ["taskkill", "/F", "/IM", "pythonw.exe"],
                 capture_output=True, text=True
             )
-            if r.returncode == 0:
-                self._log_write("  Agente anterior detenido ✓")
-                import time; time.sleep(1)  # esperar que libere archivos
-            else:
-                self._log_write("  Sin agente previo en ejecución ✓")
+            import time; time.sleep(1)
+            self._log_write("  Agente anterior detenido ✓")
         except Exception as e:
-            self._log_write(f"  (No se pudo verificar proceso previo: {e})")
+            self._log_write(f"  (Sin agente previo: {e})")
         self._set_prog(paso_val)
 
         # 1. Dependencias
@@ -807,22 +862,22 @@ class Instalador:
             shutil.copy2(AGENT_FILE, os.path.join(INSTALL_DIR, "mir_agente.py"))
             if os.path.exists(DESINT_FILE):
                 shutil.copy2(DESINT_FILE, os.path.join(INSTALL_DIR, "mir_desinstalador.bat"))
+            if os.path.exists(ACTUALIZADOR_FILE):
+                shutil.copy2(ACTUALIZADOR_FILE, os.path.join(INSTALL_DIR, "mir_actualizador.bat"))
+            if os.path.exists(NSSM_FILE):
+                shutil.copy2(NSSM_FILE, os.path.join(INSTALL_DIR, "nssm.exe"))
+                self._log_write("  nssm.exe copiado ✓")
             self._log_write(f"  Archivos copiados a {INSTALL_DIR} ✓")
         except Exception as e:
             self._log_write(f"  Error al copiar archivos: {e}")
         self._set_prog(paso_val * 2)
 
-        # 3. Obtener credenciales del agente para este cliente
-        self._log_write("▶ Obteniendo credenciales del agente...")
-        cliente_id = self.v_id.get()
-        agente_email, agente_pass, agente_err = fetch_agente_config(
-            cliente_id, AGENTE_EMAIL, AGENTE_CONTRASENA)
-        if agente_email:
-            self._log_write(f"  Credenciales obtenidas para {agente_email} ✓")
-        else:
-            self._log_write(f"  Advertencia: {agente_err} — usando agente compartido")
-            agente_email = AGENTE_EMAIL
-            agente_pass  = AGENTE_CONTRASENA
+        # 3. Usar credenciales del agente resueltas desde el token
+        self._log_write("▶ Usando credenciales del agente...")
+        cliente_id   = self.v_id.get()
+        agente_email = self._agente_email_resuelto or AGENTE_EMAIL
+        agente_pass  = self._agente_pass_resuelto  or AGENTE_CONTRASENA
+        self._log_write(f"  Agente: {agente_email} ✓")
         self._set_prog(paso_val * 3)
 
         # 4. Guardar config
@@ -925,6 +980,16 @@ class Instalador:
 
     def _iniciar_agente(self):
         try:
+            nssm = os.path.join(INSTALL_DIR, "nssm.exe")
+            if os.path.exists(nssm):
+                r = subprocess.run([nssm, "start", SERVICE_NAME],
+                                   capture_output=True, text=True, timeout=15)
+                if r.returncode == 0:
+                    messagebox.showinfo("Agente iniciado",
+                        "El servicio de monitoreo está corriendo.\n"
+                        "Los datos comenzarán a aparecer en el dashboard en ~60 segundos.")
+                    return
+            # Fallback: lanzar pythonw directamente
             pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
             if not os.path.exists(pythonw):
                 pythonw = sys.executable

@@ -32,6 +32,12 @@ echo.
 
 :: 1. Terminar proceso del agente
 echo  [..] Deteniendo agente...
+set NSSM_PATH="%~dp0nssm.exe"
+if exist %NSSM_PATH% (
+    %NSSM_PATH% stop MirAgente >nul 2>&1
+    %NSSM_PATH% remove MirAgente confirm >nul 2>&1
+    echo  [OK] Servicio Windows eliminado.
+)
 taskkill /f /im pythonw.exe >nul 2>&1
 taskkill /f /im python.exe /fi "WINDOWTITLE eq Mir*" >nul 2>&1
 echo  [OK] Proceso detenido.
@@ -68,6 +74,7 @@ del /f /q "!DIR!mir_ultima_velocidad.json" >nul 2>&1
 del /f /q "!DIR!mir_dispositivos_conocidos.json" >nul 2>&1
 del /f /q "!DIR!mir_inicio.bat" >nul 2>&1
 del /f /q "!DIR!mir_offline_*.json" >nul 2>&1
+del /f /q "!DIR!nssm.exe" >nul 2>&1
 echo  [OK] Archivos eliminados.
 
 echo.
