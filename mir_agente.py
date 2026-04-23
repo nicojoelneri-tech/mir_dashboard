@@ -23,6 +23,7 @@ import xml.etree.ElementTree as ET
 # ─────────────────────────────────────────────
 #  CONFIG  (defaults — se sobreescriben con mir_config.json)
 # ─────────────────────────────────────────────
+AGENTE_VERSION      = "2.3"
 CLIENTE_ID          = "clientedemo"
 FIREBASE_URL        = "https://mir-soluciones-35859-default-rtdb.firebaseio.com"
 FIREBASE_API_KEY    = "AIzaSyAiV60g7n6UdiHwXZ8S0dTbIBBk4bxdRZs"  # Web API key (público)
@@ -452,6 +453,57 @@ def enviar_firebase(datos, nodo="ultimo_reporte", guardar_si_falla=True):
         if guardar_si_falla:
             guardar_local(datos)
         return False
+
+def verificar_actualizacion():
+    """Compara versión local con la publicada en Firebase.
+    Si hay una nueva versión disponible, descarga el script y lanza
+    mir_actualizador.bat para reemplazarlo y reiniciar el proceso.
+    """
+    import urllib.request, tempfile
+    try:
+        token = obtener_token()
+        if not token:
+            return
+        url = f"{FIREBASE_URL}/admin_config/actualizacion.json?auth={token}"
+        with urllib.request.urlopen(url, timeout=8) as r:
+            data = json.loads(r.read().decode())
+        if not data or not isinstance(data, dict):
+            return
+        version_remota = data.get("version", "")
+        script_b64     = data.get("script_b64", "")
+        if not version_remota or not script_b64:
+            return
+        if version_remota == AGENTE_VERSION:
+            return
+
+        print(f"  [↑] Actualización disponible: {AGENTE_VERSION} → {version_remota}")
+        import base64
+        contenido = base64.b64decode(script_b64.encode()).decode("utf-8")
+
+        # Guardar nuevo script en archivo temporal
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".py",
+                                          prefix="mir_agente_nuevo_",
+                                          dir=_DIR, mode="w", encoding="utf-8")
+        tmp.write(contenido)
+        tmp.close()
+
+        # Lanzar actualizador en background y salir
+        bat = os.path.join(_DIR, "mir_actualizador.bat")
+        if not os.path.exists(bat):
+            print(f"  [!] No se encontró mir_actualizador.bat en {_DIR}")
+            os.unlink(tmp.name)
+            return
+
+        print(f"  [↑] Aplicando actualización y reiniciando...")
+        subprocess.Popen(
+            ["cmd", "/c", bat, tmp.name],
+            creationflags=subprocess.CREATE_NEW_CONSOLE,
+            close_fds=True
+        )
+        sys.exit(0)
+
+    except Exception as e:
+        print(f"  [!] Error verificando actualización: {e}")
 
 def guardar_uptime_barra(online):
     """Guarda entrada compacta de uptime en /uptime_barra/{ts} — un registro por ciclo."""
@@ -954,7 +1006,19 @@ def consultar_hikvision(config, req, HTTPDigestAuth):
                     for canal in res["canales"]:
                         canal["activa"] = con_senal.get(canal["id"], False)
         if not inputproxy_ok:
-            # DVR analógico: consultar status por canal (101→vid 1, 201→vid 2, etc.)
+            # DVR analógico — intentar /status primero, luego resDesc como fallback
+            # Algunos Hikvision (ej. DS-7204) devuelven 403 en /status pero exponen
+            # resDesc en la lista de canales: "NO VIDEO" = sin señal, otro valor = con señal.
+            res_desc_map = {}
+            r_list = req.get(f"{base}/System/Video/inputs/channels", auth=auth, timeout=(3.05, 10))
+            if r_list.status_code == 200:
+                root_list = _xml_parse(r_list.text)
+                if root_list is not None:
+                    for ch in root_list.iter("VideoInputChannel"):
+                        cid  = str(ch.findtext("id") or "")
+                        desc = (ch.findtext("resDesc") or "").strip().upper()
+                        res_desc_map[cid] = desc
+
             for canal in res["canales"]:
                 cid = canal["id"]
                 vid_id = str(int(cid) // 100) if cid.isdigit() and int(cid) >= 100 else cid
@@ -969,43 +1033,18 @@ def consultar_hikvision(config, req, HTTPDigestAuth):
                             canal["activa"] = signal in ("connected", "online", "true", "1")
                         else:
                             canal["activa"] = False
+                    elif res_desc_map:
+                        # Fallback: resDesc — "NO VIDEO" indica sin señal
+                        desc = res_desc_map.get(vid_id, "NO VIDEO")
+                        canal["activa"] = bool(desc) and desc != "NO VIDEO"
                     else:
                         canal["activa"] = False
                 except Exception:
                     canal["activa"] = False
 
-        # 4. Estado de grabación — intentar endpoint real primero, luego schedule como fallback
-        grabando_desde_status = False
-        r_rs = req.get(f"{base}/System/Video/inputs/streams/recordStatus", auth=auth, timeout=(3.05, 20))
-        if r_rs.status_code == 200:
-            root_rs = _xml_parse(r_rs.text)
-            if root_rs is not None:
-                grabando_ids = set()
-                for elem in root_rs.iter():
-                    sid  = elem.findtext("id") or elem.findtext("streamID") or elem.findtext("channelID")
-                    stat = (elem.findtext("recordStatus") or elem.findtext("isRecording") or "").lower()
-                    if sid and stat in ("recording", "true", "1"):
-                        grabando_ids.add(str(sid))
-                if grabando_ids:
-                    grabando_desde_status = True
-                    for canal in res["canales"]:
-                        canal["grabando"] = canal["id"] in grabando_ids
-
-        if not grabando_desde_status:
-            # Fallback: usar schedule (record/tracks) — indica "configurado para grabar"
-            r = req.get(f"{base}/ContentMgmt/record/tracks", auth=auth, timeout=(3.05, 20))
-            if r.status_code == 200:
-                root = _xml_parse(r.text)
-                if root is not None:
-                    activos = set()
-                    for track in root.iter("Track"):
-                        if (track.findtext("enable") or track.findtext("enabled") or "").lower() == "true":
-                            activos.add(track.findtext("id") or "")
-                    for canal in res["canales"]:
-                        canal["grabando"] = canal["id"] in activos
-            else:
-                for canal in res["canales"]:
-                    canal["grabando"] = canal["activa"]
+        # Grabando = conectada (detección de disco se implementa en etapa posterior)
+        for canal in res["canales"]:
+            canal["grabando"] = canal["activa"]
 
         res["grabando"] = any(c["grabando"] for c in res["canales"])
 
@@ -1239,6 +1278,9 @@ while True:
     ahora = time.time()
     print(f"\n[{ts()}]  Medicion #{medicion}")
     try:
+        if medicion % 10 == 0:
+            verificar_actualizacion()
+
         separador()
     
         # ── RED E INTERNET ──
@@ -1420,7 +1462,7 @@ while True:
             "camaras": camaras_reporte if camaras_reporte else None,
             "alertas": alertas,
             "sistema": _armar_sistema(),
-            "agente_version": "2.2"
+            "agente_version": AGENTE_VERSION
         }
     
         print("  [..] Enviando a Firebase...", end=" ", flush=True)

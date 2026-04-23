@@ -115,14 +115,15 @@ def cargar_estado():
         log("Sin estado previo de alertas — empezando limpio.")
 
 # ── Telegram ──────────────────────────────────────────────────────────────────
-def telegram_send(mensaje):
-    if not _tg_token or not _tg_chat_id:
+def telegram_send(mensaje, chat_id_override=None):
+    cid = chat_id_override or _tg_chat_id
+    if not _tg_token or not cid:
         log(f"  [ALERTA sin Telegram] {mensaje}")
         return False
     try:
         http_post(
             f"https://api.telegram.org/bot{_tg_token}/sendMessage",
-            {"chat_id": _tg_chat_id, "text": mensaje, "parse_mode": "HTML"}
+            {"chat_id": cid, "text": mensaje, "parse_mode": "HTML"}
         )
         log(f"  [TG] {mensaje[:80]}")
         return True
@@ -176,24 +177,29 @@ def revisar_clientes(clientes_data):
         inet_prev    = estado_prev.get("inet_ok")
         nombre       = cliente_id.replace("_", " ").title()
 
+        tg_cfg = (datos or {}).get("telegram") or {}
+        chat_id_cli = str(tg_cfg["chat_id"]) if tg_cfg.get("chat_id") else None
+
         # Conectividad del agente
         if online_prev is None:
             pass  # primera vez — no alertar
         elif online_prev and not online_ahora:
             telegram_send(
                 f"🔴 <b>{nombre}</b> — sin conexión\n"
-                f"Sin reporte hace {mins:.0f} min."
+                f"Sin reporte hace {mins:.0f} min.",
+                chat_id_cli
             )
         elif not online_prev and online_ahora:
-            telegram_send(f"🟢 <b>{nombre}</b> — conexión restaurada")
+            telegram_send(f"🟢 <b>{nombre}</b> — conexión restaurada", chat_id_cli)
         elif online_ahora and inet_prev is not None:
             if inet_prev and not inet_ok_ahora:
                 telegram_send(
                     f"🟡 <b>{nombre}</b> — sin internet\n"
-                    f"El equipo está encendido pero sin acceso a internet."
+                    f"El equipo está encendido pero sin acceso a internet.",
+                    chat_id_cli
                 )
             elif not inet_prev and inet_ok_ahora:
-                telegram_send(f"🟢 <b>{nombre}</b> — internet restaurado")
+                telegram_send(f"🟢 <b>{nombre}</b> — internet restaurado", chat_id_cli)
 
         # DVR / cámaras
         camaras     = rep.get("camaras") or []
@@ -205,10 +211,11 @@ def revisar_clientes(clientes_data):
                 nvrs_off = [c["nombre"] for c in camaras if not c.get("online")]
                 telegram_send(
                     f"📷 <b>{nombre}</b> — DVR/NVR offline\n"
-                    f"Equipo(s): {', '.join(nvrs_off)}"
+                    f"Equipo(s): {', '.join(nvrs_off)}",
+                    chat_id_cli
                 )
             elif not dvr_ok_prev and dvr_ok_ahora:
-                telegram_send(f"📷 <b>{nombre}</b> — DVR/NVR restaurado")
+                telegram_send(f"📷 <b>{nombre}</b> — DVR/NVR restaurado", chat_id_cli)
 
             # Disco lleno
             for cam in camaras:
@@ -218,7 +225,8 @@ def revisar_clientes(clientes_data):
                     if pct >= DISCO_PCT_ALERTA and not estado_prev.get(clave):
                         telegram_send(
                             f"💾 <b>{nombre}</b> — disco casi lleno\n"
-                            f"DVR: {cam['nombre']} | Disco {disco['id']}: {pct}% usado"
+                            f"DVR: {cam['nombre']} | Disco {disco['id']}: {pct}% usado",
+                            chat_id_cli
                         )
                         _estado_clientes.setdefault(cliente_id, {})[clave] = True
                     elif pct < DISCO_PCT_ALERTA:
